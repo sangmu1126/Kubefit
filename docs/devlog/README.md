@@ -112,6 +112,7 @@ evidence of engineering judgment than a final screenshot without context.
 | [0088](0088-podkill-ownership-preflight.md) | PodKill ownership preflight | Select one eligible Pod through UID ownership without mutating the cluster |
 | [0089](0089-bounded-podkill-recovery-runner.md) | Bounded PodKill recovery runner | Revalidate, delete once, and measure HTTP plus replacement recovery internally |
 | [0090](0090-controlled-podkill-evidence.md) | Controlled PodKill evidence | Require passing change evidence, run one acknowledged fault, and persist PASS or FAIL |
+| [0091](0091-preregistered-podkill-campaign.md) | Preregistered PodKill campaign | Freeze repeated-trial count, stopping rule, failure budget, and recovery limits before faults |
 
 ## Visual language
 

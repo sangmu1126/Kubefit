@@ -572,6 +572,24 @@ are written as self-contained, content-addressed `podkill-<digest>` evidence; FA
 with code 2. This path is locally unit-tested and has not yet been exercised against a
 live cluster, so the repository does not claim observed recovery performance.
 
+Before collecting repeated fault results, freeze the sample count, failure budget, and
+recovery thresholds in a content-addressed campaign plan:
+
+```bash
+kubefit podkill-campaign-plan \
+  --change .kubefit/changes/change-<digest> \
+  --performance-pair \
+    .kubefit/change-performance-pairs/change-performance-pair-<digest> \
+  --planned-trials 5 \
+  --allowed-failed-trials 0 \
+  --service-recovery-limit-seconds 3 \
+  --replacement-ready-limit-seconds 30
+```
+
+The plan requires at least three trials and fixes a complete-all-trials stopping rule.
+It does not run faults or claim statistical significance; its purpose is to prevent
+choosing the trial count and acceptable thresholds after seeing outcomes.
+
 Repeated evidence can be preregistered with `kubefit benchmark-campaign-plan`. The
 immutable plan fixes an explicit pair count, balances and randomizes which execution
 order starts each time block, and requires every planned block before completion.
