@@ -139,10 +139,29 @@ kubefit execute-change \
   --confirm-disposable-cluster
 ```
 
-공유 고정 k6 프로파일은 이제 상호 배타적인 `change_id` 식별자를 받을 수 있으며,
-generic load executor는 typed summary, 원시 sample, 실행 시각과 SHA-256 digest를
-보존합니다. 아직 `execute-change`와 연결되지 않은 수집 경계이므로 generic 성능
-PASS/FAIL을 생성한다고 주장하지 않습니다.
+공유 고정 k6 프로파일은 상호 배타적인 `change_id` 식별자를 받습니다.
+`kubefit benchmark-change`는 base/candidate 부하 수집과 의무적인 base 복원을 연결하고
+content-addressed `change-performance-<digest>` 결과를 발행합니다. 재생 가능한 판정은
+고정 부하 완결성, latency, error rate, 복구시간으로 한정하며 비용·throttling·OOM·장애
+주입을 검증했다고 주장하지 않습니다.
+
+```bash
+kubefit benchmark-change \
+  --change .kubefit/changes/change-<digest> \
+  --target-url http://127.0.0.1:8080 \
+  --context kind-kubefit \
+  --container api \
+  --confirm-disposable-cluster \
+  --execution-order before-after
+```
+
+두 번의 전체 부하 구간만 약 6분이 걸리며 rollout 시간은 별도입니다. FAIL과 INVALID도
+artifact를 먼저 보존한 후 종료 코드 2를 반환합니다. 새 generic 경로는 로컬 단위 테스트로
+검증했지만 실제 클러스터 실행까지 완료했다고 주장하지 않습니다.
+
+두 번째 독립 실행은 `--execution-order after-before`로 수집합니다. 각 artifact는 측정
+시각으로 실행 순서를 다시 검증하며, 이후 Pair 판정이 두 artifact를 결합하기 전까지는
+각각 단일 순차 실행의 시간 편향 경고를 유지합니다.
 
 ## 검증된 결과
 
@@ -151,7 +170,7 @@ KubeFit은 비용 절감 예상치, 단일 Pair 결과, 반복 campaign을 서�
 
 | 주장 | 재현 가능한 근거 |
 |---|---|
-| 추천·artifact·데모 계약이 안전 조건으로 보호됨 | 현재 소스 기준 Python 테스트 446개 |
+| 추천·artifact·데모 계약이 안전 조건으로 보호됨 | 현재 소스 기준 Python 테스트 466개 |
 | Dashboard가 명세대로 동작하고 빌드됨 | 테스트 19개와 Vite production build |
 | Helm 패키지가 최소 권한 기본값으로 렌더링됨 | Helm lint 및 기본 template 검증 |
 | 공개 이미지가 실제로 기동함 | non-root `10001:10001`, health, Dashboard, 저장 비활성 smoke test |
@@ -293,7 +312,7 @@ tests/           단위·통합·계약 테스트
 - [구현 순서와 완료 기준](docs/implementation-plan.md)
 - [아키텍처](docs/architecture.md)
 - [로컬 개발·kind·Prometheus 실행](docs/local-development.md)
-- [개발기록 83개](docs/devlog/README.md)
+- [개발기록 86개](docs/devlog/README.md)
 - [GitHub 실증 절차](docs/live-github-demo.md)
 - [기여 안내](CONTRIBUTING.md)
 - [보안 정책](SECURITY.md)

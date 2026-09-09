@@ -36,7 +36,7 @@ be mistaken for one another:
 
 | Claim | Reproducible evidence |
 |---|---|
-| Resource recommendations, package boundaries, and the demo contract are safety-gated | 446 Python tests on the current source |
+| Resource recommendations, package boundaries, and the demo contract are safety-gated | 466 Python tests on the current source |
 | The review UI builds and behaves as specified | 19 dashboard tests and a production Vite build |
 | The package renders with least-privilege defaults | Helm lint and default-template validation |
 | The production image actually starts | Docker startup, numeric non-root user, health, dashboard, and disabled-storage smoke checks |
@@ -496,10 +496,31 @@ kubefit execute-change \
   --confirm-disposable-cluster
 ```
 
-The shared fixed k6 profile now accepts a mutually exclusive `change_id` identity, and
-the generic load executor preserves typed summary bytes, raw samples, timestamps, and
-their SHA-256 digests. This is a collection boundary under development; it is not yet
-wired to `execute-change` and does not produce a generic performance verdict.
+The shared fixed k6 profile accepts a mutually exclusive `change_id` identity.
+`kubefit benchmark-change` sequences base/candidate load collection with mandatory base
+restoration and publishes a content-addressed `change-performance-<digest>` result. Its
+replayable verdict is deliberately limited to fixed-load completeness, latency, error
+rate, and recovery time; it makes no cost, throttling, OOM, or fault claim.
+
+```bash
+kubefit benchmark-change \
+  --change .kubefit/changes/change-<digest> \
+  --target-url http://127.0.0.1:8080 \
+  --context kind-kubefit \
+  --container api \
+  --confirm-disposable-cluster \
+  --execution-order before-after
+```
+
+Both complete load phases take roughly six minutes in total before rollout time. FAIL
+and INVALID results are retained before the command exits with code 2. The current
+source contract is locally unit-tested but has not run this new generic path against a
+live cluster yet.
+
+Run a second independent trial with `--execution-order after-before` to collect the
+opposite order. Each artifact records and revalidates its order from measurement
+timestamps and still carries a sequential-order warning until a later Pair assessment
+binds both artifacts.
 
 Repeated evidence can be preregistered with `kubefit benchmark-campaign-plan`. The
 immutable plan fixes an explicit pair count, balances and randomizes which execution

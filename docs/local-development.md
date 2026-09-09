@@ -496,8 +496,42 @@ The fixed profile at `benchmarks/k6/resource_profile.js` also accepts
 `KUBEFIT_CHANGE_ID=change-<digest>` instead of `KUBEFIT_PROPOSAL_ID`. Exactly one
 identity is required. The generic executor validates that emitted identity and retains
 the typed summary bytes, raw k6 samples, timestamps, recovery observation, and their
-hashes. It is currently an internal collection contract: no CLI orchestration or
-generic verdict is available yet.
+hashes. The internal generic performance runner applies and measures base, applies and
+measures candidate, then restores base before returning a replayable latency/error/load/
+recovery verdict. Run and persist that contract with:
+
+```bash
+kubefit benchmark-change \
+  --change .kubefit/changes/change-<digest> \
+  --target-url http://127.0.0.1:8080 \
+  --context kind-kubefit \
+  --container api \
+  --confirm-disposable-cluster \
+  --execution-order before-after \
+  --results-dir .kubefit/change-performance
+```
+
+The target URL must remain reachable from the host-side k6 process throughout both
+160-second profiles. The command holds the same per-context Deployment lock as resource
+benchmarks. It restores base, atomically writes exact summary/raw evidence plus policy
+and verdict, reloads the artifact, then prints only its identity and status. FAIL or
+INVALID evidence remains on disk and produces exit code 2.
+
+Collect the opposite order as a separate restored artifact:
+
+```bash
+kubefit benchmark-change \
+  --change .kubefit/changes/change-<digest> \
+  --target-url http://127.0.0.1:8080 \
+  --context kind-kubefit \
+  --container api \
+  --confirm-disposable-cluster \
+  --execution-order after-before
+```
+
+The run model derives chronological order from non-overlapping measurement timestamps
+and rejects a declared order that conflicts with them. Both commands restore base.
+They do not yet form a counterbalanced Pair verdict.
 
 If an aggressive candidate fails, keep that immutable result and do not repeat the
 same trial until it passes. A documented workload-specific CPU floor can be raised

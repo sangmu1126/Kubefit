@@ -105,6 +105,9 @@ evidence of engineering judgment than a final screenshot without context.
 | [0081](0081-immutable-generic-change-bundle.md) | Immutable generic change bundle | Freeze exact image, replica, or resource inputs before disposable execution |
 | [0082](0082-restoring-generic-change-runner.md) | Restoring generic change runner | Execute exact bundles on disposable kind and make base restoration mandatory |
 | [0083](0083-change-bound-fixed-load-evidence.md) | Change-bound fixed-load evidence | Bind shared k6 outputs and raw samples to an immutable generic change ID |
+| [0084](0084-restored-generic-performance-run.md) | Restored generic performance run | Compare base and candidate fixed load only after mandatory base restoration |
+| [0085](0085-immutable-generic-performance-result.md) | Immutable generic performance result | Persist replayable PASS, FAIL, or INVALID evidence behind a fail-closed CLI |
+| [0086](0086-opposite-order-generic-performance.md) | Opposite-order generic performance | Produce independently restored base-first and candidate-first artifacts |
 
 ## Visual language
 
