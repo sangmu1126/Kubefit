@@ -72,6 +72,13 @@ from safety.podkill import (
     PodKillPreflight,
     PodKillPreflightError,
 )
+from safety.podkill_runner import (
+    HttpProbeObservation,
+    PodKillExperimentError,
+    PodKillExperimentResult,
+    PodKillExperimentRunner,
+    PodKillProbeSample,
+)
 from safety.runner import (
     ChangeExecutionError,
     ChangeExecutionResult,
@@ -118,8 +125,13 @@ __all__ = [
     "LoadedChangePerformancePair",
     "KubectlPodKillPreflight",
     "PodKillCandidate",
+    "PodKillExperimentError",
+    "PodKillExperimentResult",
+    "PodKillExperimentRunner",
     "PodKillPreflight",
     "PodKillPreflightError",
+    "PodKillProbeSample",
+    "HttpProbeObservation",
     "SafetyGateCheck",
     "SafetyGateResult",
     "SubprocessChangeK6Executor",
