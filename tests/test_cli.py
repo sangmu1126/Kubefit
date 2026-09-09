@@ -310,6 +310,287 @@ def test_benchmark_pair_prints_machine_enforceable_assessment(
         assert set(output) == {"status"}
 
 
+@pytest.mark.parametrize(("status", "exit_code"), [("pass", None), ("fail", 2)])
+def test_check_writes_ci_summary_and_enforces_the_verdict(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    status: str,
+    exit_code: int | None,
+) -> None:
+    summary_path = tmp_path / "step-summary.md"
+    assessment = SimpleNamespace(
+        status=status,
+        model_dump=lambda *, mode: {"status": status, "assessment_id": "pair"},
+    )
+    summaries = []
+    monkeypatch.setattr(
+        cli_module, "assess_counterbalanced_pair", lambda first, second: assessment
+    )
+    monkeypatch.setattr(
+        cli_module,
+        "append_step_summary",
+        lambda path, value: summaries.append((path, value)),
+    )
+    arguments = [
+        "check",
+        "--first",
+        "first-result",
+        "--second",
+        "second-result",
+        "--step-summary",
+        str(summary_path),
+    ]
+
+    if exit_code is None:
+        cli_module.main(arguments)
+    else:
+        with pytest.raises(SystemExit) as raised:
+            cli_module.main(arguments)
+        assert raised.value.code == exit_code
+
+    assert summaries == [(summary_path, assessment)]
+    assert json.loads(capsys.readouterr().out) == {
+        "assessment_id": "pair",
+        "status": status,
+        "step_summary": str(summary_path),
+    }
+
+
+def test_check_uses_github_step_summary_environment_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    summary_path = tmp_path / "github-summary.md"
+    assessment = SimpleNamespace(
+        status="pass",
+        model_dump=lambda *, mode: {"status": "pass"},
+    )
+    paths = []
+    monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(summary_path))
+    monkeypatch.setattr(
+        cli_module, "assess_counterbalanced_pair", lambda first, second: assessment
+    )
+    monkeypatch.setattr(
+        cli_module,
+        "append_step_summary",
+        lambda path, value: paths.append(path),
+    )
+
+    cli_module.main(["check", "--first", "first", "--second", "second"])
+
+    assert paths == [summary_path]
+
+
+@pytest.mark.parametrize(
+    ("status", "exit_code"),
+    [("supported", None), ("unsupported", 2), ("unchanged", 2)],
+)
+def test_inspect_change_is_a_machine_enforceable_scope_gate(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    status: str,
+    exit_code: int | None,
+) -> None:
+    change = SimpleNamespace(
+        status=status,
+        model_dump_json=lambda *, indent: json.dumps({"status": status}, indent=indent),
+    )
+    calls = []
+    monkeypatch.setattr(
+        cli_module,
+        "inspect_deployment_change",
+        lambda base, candidate, *, namespace, deployment: (
+            calls.append((base, candidate, namespace, deployment)) or change
+        ),
+    )
+    arguments = [
+        "inspect-change",
+        "--base",
+        "base.yaml",
+        "--candidate",
+        "candidate.yaml",
+        "--namespace",
+        "demo",
+        "--deployment",
+        "api",
+    ]
+
+    if exit_code is None:
+        cli_module.main(arguments)
+    else:
+        with pytest.raises(SystemExit) as raised:
+            cli_module.main(arguments)
+        assert raised.value.code == exit_code
+
+    assert calls == [(Path("base.yaml"), Path("candidate.yaml"), "demo", "api")]
+    assert json.loads(capsys.readouterr().out) == {"status": status}
+
+
+@pytest.mark.parametrize(("status", "exit_code"), [("pass", None), ("invalid", 2)])
+def test_validate_enforces_bound_end_to_end_evidence(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    status: str,
+    exit_code: int | None,
+) -> None:
+    summary_path = tmp_path / "summary.md"
+    result = SimpleNamespace(
+        status=status,
+        model_dump=lambda *, mode: {"status": status, "proposal_id": "proposal"},
+    )
+    calls = []
+    summaries = []
+    monkeypatch.setattr(
+        cli_module,
+        "validate_proposal_change",
+        lambda *paths: calls.append(paths) or result,
+    )
+    monkeypatch.setattr(cli_module, "render_validation_summary", lambda value: "report\n")
+    monkeypatch.setattr(
+        cli_module,
+        "append_markdown_summary",
+        lambda path, content: summaries.append((path, content)),
+    )
+    arguments = [
+        "validate",
+        "--proposal",
+        "proposal",
+        "--base",
+        "base.yaml",
+        "--candidate",
+        "candidate.yaml",
+        "--first",
+        "first-result",
+        "--second",
+        "second-result",
+        "--step-summary",
+        str(summary_path),
+    ]
+
+    if exit_code is None:
+        cli_module.main(arguments)
+    else:
+        with pytest.raises(SystemExit) as raised:
+            cli_module.main(arguments)
+        assert raised.value.code == exit_code
+
+    assert calls == [
+        (
+            Path("proposal"),
+            Path("base.yaml"),
+            Path("candidate.yaml"),
+            Path("first-result"),
+            Path("second-result"),
+        )
+    ]
+    assert summaries == [(summary_path, "report\n")]
+    assert json.loads(capsys.readouterr().out) == {
+        "proposal_id": "proposal",
+        "status": status,
+        "step_summary": str(summary_path),
+    }
+
+
+def test_prepare_change_publishes_a_machine_readable_artifact(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    calls = []
+    monkeypatch.setattr(
+        cli_module,
+        "write_change_bundle",
+        lambda output, base, candidate, *, namespace, deployment: (
+            calls.append((output, base, candidate, namespace, deployment))
+            or SimpleNamespace(
+                artifact_id="change-" + "a" * 32,
+                path=output / ("change-" + "a" * 32),
+                reused=False,
+                files=["change-bundle.json", "change.json"],
+            )
+        ),
+    )
+
+    cli_module.main(
+        [
+            "prepare-change",
+            "--base",
+            "base.yaml",
+            "--candidate",
+            "candidate.yaml",
+            "--namespace",
+            "demo",
+            "--deployment",
+            "api",
+            "--output-dir",
+            "changes",
+        ]
+    )
+
+    assert calls == [
+        (Path("changes"), Path("base.yaml"), Path("candidate.yaml"), "demo", "api")
+    ]
+    output = json.loads(capsys.readouterr().out)
+    assert output["artifact_id"] == "change-" + "a" * 32
+    assert output["reused"] is False
+
+
+def test_execute_change_composes_disposable_kind_execution(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    calls: dict[str, object] = {}
+
+    def controller(**kwargs):
+        calls["controller"] = kwargs
+        return "controller"
+
+    def execute(path, selected_controller, *, container):
+        calls["execute"] = (path, selected_controller, container)
+        return SimpleNamespace(model_dump_json=lambda **_: '{"status":"pass"}')
+
+    monkeypatch.setattr(cli_module, "KubectlManifestController", controller)
+    monkeypatch.setattr(cli_module, "execute_change_bundle", execute)
+
+    cli_module.main(
+        [
+            "execute-change",
+            "--change",
+            "changes/change-abc",
+            "--context",
+            "kind-kubefit",
+            "--container",
+            "api",
+            "--confirm-disposable-cluster",
+            "--rollout-timeout-seconds",
+            "45",
+        ]
+    )
+
+    assert calls == {
+        "controller": {"context": "kind-kubefit", "rollout_timeout_seconds": 45},
+        "execute": (Path("changes/change-abc"), "controller", "api"),
+    }
+    assert json.loads(capsys.readouterr().out) == {"status": "pass"}
+
+
+def test_execute_change_rejects_non_kind_context() -> None:
+    with pytest.raises(SystemExit, match=r"restricted to an explicit kind-\* context"):
+        cli_module.main(
+            [
+                "execute-change",
+                "--change",
+                "changes/change-abc",
+                "--context",
+                "production",
+                "--container",
+                "api",
+                "--confirm-disposable-cluster",
+            ]
+        )
+
+
 def test_benchmark_campaign_plan_reads_seed_file_and_prints_frozen_schedule(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

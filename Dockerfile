@@ -23,6 +23,7 @@ COPY collector ./collector
 COPY evaluator ./evaluator
 COPY gitops ./gitops
 COPY recommender ./recommender
+COPY safety ./safety
 
 RUN python -m pip wheel --no-cache-dir --no-deps --no-build-isolation \
         --wheel-dir /wheels .

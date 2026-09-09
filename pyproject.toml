@@ -28,7 +28,7 @@ dev = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["api", "collector", "recommender", "evaluator", "gitops", "benchmarks"]
+packages = ["api", "collector", "recommender", "evaluator", "gitops", "benchmarks", "safety"]
 exclude = [
   "/benchmarks/results/**",
   "/benchmarks/pairs/**",

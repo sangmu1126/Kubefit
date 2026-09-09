@@ -36,6 +36,12 @@ from benchmarks.campaign_review import (
     BenchmarkCampaignReview,
     review_benchmark_campaign_evidence,
 )
+from benchmarks.check import (
+    StepSummaryError,
+    append_markdown_summary,
+    append_step_summary,
+    render_step_summary,
+)
 from benchmarks.lock import BenchmarkExecutionLock, BenchmarkLockError
 from benchmarks.measurement import (
     AlignedMeasurementCollector,
@@ -152,15 +158,19 @@ __all__ = [
     "RuntimeCounterSnapshot",
     "RuntimeBenchmarkSignals",
     "SubprocessK6Executor",
+    "StepSummaryError",
     "TimedK6Result",
     "compare_benchmarks",
     "assess_counterbalanced_pair",
+    "append_markdown_summary",
+    "append_step_summary",
     "assess_benchmark_campaign",
     "create_benchmark_campaign_plan",
     "measurement_order",
     "execute_benchmark",
     "recovery_from_k6_raw",
     "load_benchmark_result",
+    "render_step_summary",
     "load_benchmark_campaign_plan",
     "load_benchmark_campaign_evidence",
     "load_counterbalanced_pair",

@@ -4,13 +4,20 @@ import { Counter } from "k6/metrics";
 
 const profileVersion = "kubefit-load-v1";
 const targetUrl = requiredEnv("KUBEFIT_TARGET_URL");
-const proposalId = requiredEnv("KUBEFIT_PROPOSAL_ID");
+const proposalId = __ENV.KUBEFIT_PROPOSAL_ID;
+const changeId = __ENV.KUBEFIT_CHANGE_ID;
 const variant = requiredEnv("KUBEFIT_VARIANT");
 const summaryPath = requiredEnv("KUBEFIT_SUMMARY_PATH");
 const recoveryStart = new Counter("kubefit_recovery_start");
 
-if (!/^proposal-[0-9a-f]{32}$/.test(proposalId)) {
+if (Boolean(proposalId) === Boolean(changeId)) {
+  throw new Error("exactly one of KUBEFIT_PROPOSAL_ID or KUBEFIT_CHANGE_ID is required");
+}
+if (proposalId && !/^proposal-[0-9a-f]{32}$/.test(proposalId)) {
   throw new Error("KUBEFIT_PROPOSAL_ID must match proposal- followed by 32 lowercase hex digits");
+}
+if (changeId && !/^change-[0-9a-f]{32}$/.test(changeId)) {
+  throw new Error("KUBEFIT_CHANGE_ID must match change- followed by 32 lowercase hex digits");
 }
 if (variant !== "before" && variant !== "after") {
   throw new Error("KUBEFIT_VARIANT must be before or after");
@@ -82,7 +89,7 @@ export function handleSummary(data) {
   const result = {
     schema_version: 1,
     profile_version: profileVersion,
-    proposal_id: proposalId,
+    ...(proposalId ? { proposal_id: proposalId } : { change_id: changeId }),
     variant,
     dropped_iterations: metricValue(data, "dropped_iterations", "count", 0),
     steady: phaseSummary(data, "steady", 300),

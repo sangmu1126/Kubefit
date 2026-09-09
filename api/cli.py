@@ -11,7 +11,10 @@ from benchmarks import (
     BenchmarkExecutionLock,
     DeploymentRuntimeSnapshotter,
     KubectlManifestController,
+    StepSummaryError,
     SubprocessK6Executor,
+    append_markdown_summary,
+    append_step_summary,
     assess_benchmark_campaign,
     assess_counterbalanced_pair,
     execute_benchmark,
@@ -52,6 +55,16 @@ from gitops import (
     write_proposal_bundle,
 )
 from recommender import ObservedUsage, RecommendationPolicy
+from safety import (
+    ChangeBundleError,
+    ChangeExecutionError,
+    DeploymentChangeError,
+    execute_change_bundle,
+    inspect_deployment_change,
+    render_validation_summary,
+    validate_proposal_change,
+    write_change_bundle,
+)
 
 
 def _positive_decimal(value: str) -> Decimal:
@@ -151,6 +164,60 @@ def build_parser() -> argparse.ArgumentParser:
     benchmark_pair.add_argument(
         "--output-dir", type=Path, default=Path("benchmarks/pairs")
     )
+    check = subcommands.add_parser(
+        "check",
+        help="enforce a counterbalanced benchmark pair as a CI safety gate",
+    )
+    check.add_argument("--first", required=True, type=Path)
+    check.add_argument("--second", required=True, type=Path)
+    check.add_argument(
+        "--step-summary",
+        type=Path,
+        help="append Markdown to this path (defaults to GITHUB_STEP_SUMMARY when set)",
+    )
+    inspect_change = subcommands.add_parser(
+        "inspect-change",
+        help="classify supported and unsupported changes to one apps/v1 Deployment",
+    )
+    inspect_change.add_argument("--base", required=True, type=Path)
+    inspect_change.add_argument("--candidate", required=True, type=Path)
+    inspect_change.add_argument("--namespace", default="default")
+    inspect_change.add_argument("--deployment", required=True)
+    validate = subcommands.add_parser(
+        "validate",
+        help="bind a proposal and exact PR manifests to counterbalanced evidence",
+    )
+    validate.add_argument("--proposal", required=True, type=Path)
+    validate.add_argument("--base", required=True, type=Path)
+    validate.add_argument("--candidate", required=True, type=Path)
+    validate.add_argument("--first", required=True, type=Path)
+    validate.add_argument("--second", required=True, type=Path)
+    validate.add_argument("--step-summary", type=Path)
+    prepare_change = subcommands.add_parser(
+        "prepare-change",
+        help="publish an immutable base/candidate Deployment change bundle",
+    )
+    prepare_change.add_argument("--base", required=True, type=Path)
+    prepare_change.add_argument("--candidate", required=True, type=Path)
+    prepare_change.add_argument("--namespace", default="default")
+    prepare_change.add_argument("--deployment", required=True)
+    prepare_change.add_argument(
+        "--output-dir", type=Path, default=Path(".kubefit/changes")
+    )
+    execute_change = subcommands.add_parser(
+        "execute-change",
+        help="apply a change bundle on disposable kind and always restore its base",
+    )
+    execute_change.add_argument("--change", required=True, type=Path)
+    execute_change.add_argument("--context", required=True)
+    execute_change.add_argument("--container", required=True)
+    execute_change.add_argument(
+        "--confirm-disposable-cluster",
+        required=True,
+        action="store_true",
+        help="acknowledge that exact bundle manifests will be temporarily applied",
+    )
+    execute_change.add_argument("--rollout-timeout-seconds", type=_positive_int, default=120)
     campaign_plan = subcommands.add_parser(
         "benchmark-campaign-plan",
         help="preregister a balanced randomized schedule of repeated benchmark pairs",
@@ -237,6 +304,21 @@ def main(argv: list[str] | None = None) -> None:
         return
     if args.command == "benchmark-pair":
         _run_benchmark_pair(args)
+        return
+    if args.command == "check":
+        _run_check(args)
+        return
+    if args.command == "inspect-change":
+        _run_inspect_change(args)
+        return
+    if args.command == "validate":
+        _run_validate(args)
+        return
+    if args.command == "prepare-change":
+        _run_prepare_change(args)
+        return
+    if args.command == "execute-change":
+        _run_execute_change(args)
         return
     if args.command == "benchmark-campaign-plan":
         _run_benchmark_campaign_plan(args)
@@ -521,6 +603,104 @@ def _run_benchmark_pair(args: argparse.Namespace) -> None:
         }
     )
     print(json.dumps(output, indent=2, sort_keys=True))
+
+
+def _run_check(args: argparse.Namespace) -> None:
+    assessment = assess_counterbalanced_pair(args.first, args.second)
+    summary_path = args.step_summary
+    if summary_path is None and os.environ.get("GITHUB_STEP_SUMMARY"):
+        summary_path = Path(os.environ["GITHUB_STEP_SUMMARY"])
+    try:
+        if summary_path is not None:
+            append_step_summary(summary_path, assessment)
+    except StepSummaryError as exc:
+        raise SystemExit(str(exc)) from exc
+    output = assessment.model_dump(mode="json")
+    output["step_summary"] = str(summary_path) if summary_path is not None else None
+    print(json.dumps(output, indent=2, sort_keys=True))
+    if assessment.status != "pass":
+        raise SystemExit(2)
+
+
+def _run_inspect_change(args: argparse.Namespace) -> None:
+    try:
+        change = inspect_deployment_change(
+            args.base,
+            args.candidate,
+            namespace=args.namespace,
+            deployment=args.deployment,
+        )
+    except DeploymentChangeError as exc:
+        raise SystemExit(str(exc)) from exc
+    print(change.model_dump_json(indent=2))
+    if change.status != "supported":
+        raise SystemExit(2)
+
+
+def _run_validate(args: argparse.Namespace) -> None:
+    result = validate_proposal_change(
+        args.proposal,
+        args.base,
+        args.candidate,
+        args.first,
+        args.second,
+    )
+    summary_path = args.step_summary
+    if summary_path is None and os.environ.get("GITHUB_STEP_SUMMARY"):
+        summary_path = Path(os.environ["GITHUB_STEP_SUMMARY"])
+    try:
+        if summary_path is not None:
+            append_markdown_summary(summary_path, render_validation_summary(result))
+    except StepSummaryError as exc:
+        raise SystemExit(str(exc)) from exc
+    output = result.model_dump(mode="json")
+    output["step_summary"] = str(summary_path) if summary_path is not None else None
+    print(json.dumps(output, indent=2, sort_keys=True))
+    if result.status != "pass":
+        raise SystemExit(2)
+
+
+def _run_prepare_change(args: argparse.Namespace) -> None:
+    try:
+        artifact = write_change_bundle(
+            args.output_dir,
+            args.base,
+            args.candidate,
+            namespace=args.namespace,
+            deployment=args.deployment,
+        )
+    except ChangeBundleError as exc:
+        raise SystemExit(str(exc)) from exc
+    print(
+        json.dumps(
+            {
+                "artifact_id": artifact.artifact_id,
+                "path": str(artifact.path),
+                "reused": artifact.reused,
+                "files": artifact.files,
+            },
+            indent=2,
+            sort_keys=True,
+        )
+    )
+
+
+def _run_execute_change(args: argparse.Namespace) -> None:
+    if not args.context.startswith("kind-"):
+        raise SystemExit("change execution is restricted to an explicit kind-* context")
+    controller = KubectlManifestController(
+        context=args.context,
+        rollout_timeout_seconds=args.rollout_timeout_seconds,
+    )
+    try:
+        result = execute_change_bundle(
+            args.change,
+            controller,
+            container=args.container,
+        )
+    except ChangeExecutionError as exc:
+        raise SystemExit(str(exc)) from exc
+    print(result.model_dump_json(indent=2))
 
 
 def _run_benchmark_campaign_plan(args: argparse.Namespace) -> None:

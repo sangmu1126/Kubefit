@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field, model_validator
 from benchmarks.result import (
     BenchmarkMeasurement,
     K6RunSummary,
+    LoadPhaseMetrics,
     MeasurementProvenance,
     RuntimeBenchmarkSignals,
 )
@@ -116,6 +117,10 @@ class ThrottlingCollector(Protocol):
         step_seconds: int = 5,
         rate_window_seconds: int = 30,
     ) -> float: ...
+
+
+class RecoverySummary(Protocol):
+    steady: LoadPhaseMetrics
 
 
 SnapshotCollector = Callable[[ManifestTarget], RuntimeCounterSnapshot]
@@ -287,7 +292,7 @@ class AlignedMeasurementCollector:
         )
 
 
-def recovery_from_k6_raw(raw_content: str, summary: K6RunSummary) -> tuple[float, bool]:
+def recovery_from_k6_raw(raw_content: str, summary: RecoverySummary) -> tuple[float, bool]:
     recovery_starts: list[datetime] = []
     durations: list[tuple[datetime, float]] = []
     for line_number, line in enumerate(raw_content.splitlines(), start=1):
