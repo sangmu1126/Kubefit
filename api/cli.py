@@ -59,11 +59,15 @@ from safety import (
     ChangeBundleError,
     ChangeExecutionError,
     DeploymentChangeError,
+    SubprocessChangeK6Executor,
     execute_change_bundle,
+    execute_change_performance,
     inspect_deployment_change,
+    load_change_bundle,
     render_validation_summary,
     validate_proposal_change,
     write_change_bundle,
+    write_change_performance_artifact,
 )
 
 
@@ -218,6 +222,44 @@ def build_parser() -> argparse.ArgumentParser:
         help="acknowledge that exact bundle manifests will be temporarily applied",
     )
     execute_change.add_argument("--rollout-timeout-seconds", type=_positive_int, default=120)
+    benchmark_change = subcommands.add_parser(
+        "benchmark-change",
+        help="benchmark an immutable generic change and restore base on disposable kind",
+    )
+    benchmark_change.add_argument("--change", required=True, type=Path)
+    benchmark_change.add_argument("--target-url", required=True)
+    benchmark_change.add_argument("--context", required=True)
+    benchmark_change.add_argument("--container", required=True)
+    benchmark_change.add_argument(
+        "--confirm-disposable-cluster",
+        required=True,
+        action="store_true",
+        help="acknowledge that exact change manifests will be temporarily applied",
+    )
+    benchmark_change.add_argument(
+        "--results-dir", type=Path, default=Path(".kubefit/change-performance")
+    )
+    benchmark_change.add_argument(
+        "--lock-dir", type=Path, default=Path(".kubefit/benchmark-locks")
+    )
+    benchmark_change.add_argument(
+        "--k6-script",
+        type=Path,
+        default=Path(__file__).resolve().parents[1]
+        / "benchmarks"
+        / "k6"
+        / "resource_profile.js",
+    )
+    benchmark_change.add_argument(
+        "--rollout-timeout-seconds", type=_positive_int, default=120
+    )
+    benchmark_change.add_argument("--k6-timeout-seconds", type=_positive_int, default=240)
+    benchmark_change.add_argument(
+        "--execution-order",
+        choices=("before-after", "after-before"),
+        default="before-after",
+        help="measurement order; produce both orders before a counterbalanced decision",
+    )
     campaign_plan = subcommands.add_parser(
         "benchmark-campaign-plan",
         help="preregister a balanced randomized schedule of repeated benchmark pairs",
@@ -319,6 +361,9 @@ def main(argv: list[str] | None = None) -> None:
         return
     if args.command == "execute-change":
         _run_execute_change(args)
+        return
+    if args.command == "benchmark-change":
+        _run_benchmark_change(args)
         return
     if args.command == "benchmark-campaign-plan":
         _run_benchmark_campaign_plan(args)
@@ -701,6 +746,52 @@ def _run_execute_change(args: argparse.Namespace) -> None:
     except ChangeExecutionError as exc:
         raise SystemExit(str(exc)) from exc
     print(result.model_dump_json(indent=2))
+
+
+def _run_benchmark_change(args: argparse.Namespace) -> None:
+    if not args.context.startswith("kind-"):
+        raise SystemExit("change benchmark is restricted to an explicit kind-* context")
+    change = load_change_bundle(args.change)
+    controller = KubectlManifestController(
+        context=args.context,
+        rollout_timeout_seconds=args.rollout_timeout_seconds,
+    )
+    load = SubprocessChangeK6Executor(
+        target_url=args.target_url,
+        script_path=args.k6_script,
+        timeout_seconds=args.k6_timeout_seconds,
+    )
+    with BenchmarkExecutionLock(
+        root=args.lock_dir,
+        context=args.context,
+        namespace=change.change.namespace,
+        deployment=change.change.deployment,
+    ):
+        run = execute_change_performance(
+            args.change,
+            controller,
+            load,
+            container=args.container,
+            execution_order=args.execution_order,
+        )
+        artifact = write_change_performance_artifact(args.results_dir, run)
+    print(
+        json.dumps(
+            {
+                "artifact_id": artifact.artifact_id,
+                "change_id": artifact.change_id,
+                "path": str(artifact.path),
+                "verdict": artifact.status,
+                "execution_order": run.execution_order,
+                "restored": run.restored,
+                "reused": artifact.reused,
+            },
+            indent=2,
+            sort_keys=True,
+        )
+    )
+    if artifact.status != "pass":
+        raise SystemExit(2)
 
 
 def _run_benchmark_campaign_plan(args: argparse.Namespace) -> None:

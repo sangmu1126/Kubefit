@@ -591,6 +591,126 @@ def test_execute_change_rejects_non_kind_context() -> None:
         )
 
 
+@pytest.mark.parametrize(("status", "exit_code"), [("pass", None), ("fail", 2)])
+def test_benchmark_change_persists_verdict_inside_target_lock(
+    status: str,
+    exit_code: int | None,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    events: list[object] = []
+
+    class FakeLock:
+        def __init__(self, **kwargs) -> None:
+            events.append(("lock", kwargs))
+
+        def __enter__(self):
+            events.append("lock-enter")
+            return self
+
+        def __exit__(self, exc_type, exc_value, traceback) -> None:
+            events.append("lock-exit")
+
+    monkeypatch.setattr(
+        cli_module,
+        "load_change_bundle",
+        lambda path: SimpleNamespace(
+            change=SimpleNamespace(namespace="demo", deployment="api")
+        ),
+    )
+    monkeypatch.setattr(
+        cli_module,
+        "KubectlManifestController",
+        lambda **kwargs: ("controller", kwargs),
+    )
+    monkeypatch.setattr(
+        cli_module,
+        "SubprocessChangeK6Executor",
+        lambda **kwargs: ("load", kwargs),
+    )
+    monkeypatch.setattr(cli_module, "BenchmarkExecutionLock", FakeLock)
+
+    def execute_with_order(path, controller, load, *, container, execution_order):
+        events.append(("execute", path, controller, load, container, execution_order))
+        return SimpleNamespace(
+            restored=True,
+            execution_order=execution_order,
+            verdict=SimpleNamespace(status=status),
+        )
+
+    def publish(path, run):
+        events.append(("publish", path, run))
+        return SimpleNamespace(
+            artifact_id="change-performance-" + "a" * 32,
+            change_id="change-" + "b" * 32,
+            path=path / ("change-performance-" + "a" * 32),
+            status=status,
+            reused=False,
+        )
+
+    monkeypatch.setattr(cli_module, "execute_change_performance", execute_with_order)
+    monkeypatch.setattr(cli_module, "write_change_performance_artifact", publish)
+    arguments = [
+        "benchmark-change",
+        "--change",
+        "changes/change-abc",
+        "--target-url",
+        "http://127.0.0.1:8080",
+        "--context",
+        "kind-kubefit",
+        "--container",
+        "api",
+        "--confirm-disposable-cluster",
+        "--results-dir",
+        "results",
+        "--lock-dir",
+        "locks",
+        "--execution-order",
+        "after-before",
+    ]
+
+    if exit_code is None:
+        cli_module.main(arguments)
+    else:
+        with pytest.raises(SystemExit) as raised:
+            cli_module.main(arguments)
+        assert raised.value.code == exit_code
+
+    assert events[0] == (
+        "lock",
+        {
+            "root": Path("locks"),
+            "context": "kind-kubefit",
+            "namespace": "demo",
+            "deployment": "api",
+        },
+    )
+    assert events[1] == "lock-enter"
+    assert events[-1] == "lock-exit"
+    assert next(event for event in events if isinstance(event, tuple) and event[0] == "publish")
+    output = json.loads(capsys.readouterr().out)
+    assert output["verdict"] == status
+    assert output["execution_order"] == "after-before"
+
+
+def test_benchmark_change_rejects_non_kind_context() -> None:
+    with pytest.raises(SystemExit, match=r"restricted to an explicit kind-\* context"):
+        cli_module.main(
+            [
+                "benchmark-change",
+                "--change",
+                "changes/change-abc",
+                "--target-url",
+                "http://127.0.0.1:8080",
+                "--context",
+                "production",
+                "--container",
+                "api",
+                "--confirm-disposable-cluster",
+            ]
+        )
+
+
 def test_benchmark_campaign_plan_reads_seed_file_and_prints_frozen_schedule(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
