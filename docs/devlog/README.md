@@ -113,6 +113,7 @@ evidence of engineering judgment than a final screenshot without context.
 | [0089](0089-bounded-podkill-recovery-runner.md) | Bounded PodKill recovery runner | Revalidate, delete once, and measure HTTP plus replacement recovery internally |
 | [0090](0090-controlled-podkill-evidence.md) | Controlled PodKill evidence | Require passing change evidence, run one acknowledged fault, and persist PASS or FAIL |
 | [0091](0091-preregistered-podkill-campaign.md) | Preregistered PodKill campaign | Freeze repeated-trial count, stopping rule, failure budget, and recovery limits before faults |
+| [0092](0092-replayable-podkill-campaign-evidence.md) | Replayable PodKill campaign evidence | Reject selected or mixed trials and retain complete PASS or FAIL campaigns with descriptive recovery summaries |
 
 ## Visual language
 

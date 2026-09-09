@@ -580,6 +580,7 @@ kubefit podkill-campaign-plan \
   --change .kubefit/changes/change-<digest> \
   --performance-pair \
     .kubefit/change-performance-pairs/change-performance-pair-<digest> \
+  --context kind-kubefit \
   --planned-trials 5 \
   --allowed-failed-trials 0 \
   --service-recovery-limit-seconds 3 \
@@ -589,6 +590,23 @@ kubefit podkill-campaign-plan \
 The plan requires at least three trials and fixes a complete-all-trials stopping rule.
 It does not run faults or claim statistical significance; its purpose is to prevent
 choosing the trial count and acceptable thresholds after seeing outcomes.
+
+After collecting every planned `podkill-<digest>` result, assess and package them:
+
+```bash
+kubefit podkill-campaign-check \
+  --plan .kubefit/podkill-campaigns/podkill-campaign-<digest> \
+  --trial .kubefit/podkill-results/podkill-<first> \
+  --trial .kubefit/podkill-results/podkill-<second> \
+  --trial .kubefit/podkill-results/podkill-<third>
+```
+
+The check reloads every nested artifact, rejects duplicates, mixed contexts or targets,
+and overlapping trial intervals, then applies the preregistered failure and recovery
+limits. Complete PASS and FAIL outcomes are both retained as self-contained
+`podkill-campaign-evidence-<digest>` directories; incomplete or invalid input exits 2
+without publication. Reported P50/P95 values use nearest-rank summaries of successful
+recoveries and are descriptive, not statistical confidence claims.
 
 Repeated evidence can be preregistered with `kubefit benchmark-campaign-plan`. The
 immutable plan fixes an explicit pair count, balances and randomizes which execution

@@ -44,10 +44,11 @@ outcome can influence it.
 
 ## How
 
-The plan identity contains the exact change ID, Pair ID, namespace/Deployment/container
-target, planned trial count, allowed failures, HTTP recovery limit, replacement readiness
-limit, fixed stopping rule, and explicit limitations. Loading recomputes the digest and
-report and rejects extra files, symbolic links, invalid ranges, and non-canonical JSON.
+The plan identity contains the exact change ID, Pair ID, kind context,
+namespace/Deployment/container target, planned trial count, allowed failures, HTTP
+recovery limit, replacement readiness limit, fixed stopping rule, and explicit
+limitations. Loading recomputes the digest and report and rejects extra files, symbolic
+links, invalid ranges, and non-canonical JSON.
 
 | Field | Constraint | Reason |
 |---|---:|---|
