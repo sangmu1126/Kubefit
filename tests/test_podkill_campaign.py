@@ -18,6 +18,7 @@ def test_publishes_and_reuses_preregistered_campaign_plan(tmp_path: Path) -> Non
         tmp_path / "campaigns",
         change.path,
         pair.path,
+        "kind-kubefit",
         planned_trials=5,
         allowed_failed_trials=0,
         service_recovery_limit_seconds=3,
@@ -27,6 +28,7 @@ def test_publishes_and_reuses_preregistered_campaign_plan(tmp_path: Path) -> Non
         tmp_path / "campaigns",
         change.path,
         pair.path,
+        "kind-kubefit",
         planned_trials=5,
         allowed_failed_trials=0,
         service_recovery_limit_seconds=3,
@@ -47,6 +49,7 @@ def test_policy_change_produces_distinct_campaign_identity() -> None:
     values = (
         "change-" + "a" * 32,
         "change-performance-pair-" + "b" * 32,
+        "kind-kubefit",
         TARGET,
         5,
         0,
@@ -70,6 +73,7 @@ def test_rejects_invalid_campaign_size_or_failure_budget(
         create_podkill_campaign_plan(
             "change-" + "a" * 32,
             "change-performance-pair-" + "b" * 32,
+            "kind-kubefit",
             TARGET,
             planned,
             allowed,
@@ -84,6 +88,7 @@ def test_rejects_non_finite_or_non_positive_recovery_limit(limit: float) -> None
         create_podkill_campaign_plan(
             "change-" + "a" * 32,
             "change-performance-pair-" + "b" * 32,
+            "kind-kubefit",
             TARGET,
             3,
             0,
@@ -97,7 +102,9 @@ def test_rejects_failed_pair_without_creating_campaign_root(tmp_path: Path) -> N
     output = tmp_path / "campaigns"
 
     with pytest.raises(PodKillCampaignError, match="prerequisites are invalid"):
-        write_podkill_campaign_plan(output, change.path, pair.path, 3, 0, 3, 30)
+        write_podkill_campaign_plan(
+            output, change.path, pair.path, "kind-kubefit", 3, 0, 3, 30
+        )
 
     assert not output.exists()
 
@@ -105,7 +112,14 @@ def test_rejects_failed_pair_without_creating_campaign_root(tmp_path: Path) -> N
 def test_rejects_tampered_campaign_report(tmp_path: Path) -> None:
     change, pair = prerequisites(tmp_path)
     artifact = write_podkill_campaign_plan(
-        tmp_path / "campaigns", change.path, pair.path, 3, 0, 3, 30
+        tmp_path / "campaigns",
+        change.path,
+        pair.path,
+        "kind-kubefit",
+        3,
+        0,
+        3,
+        30,
     )
     (artifact.path / "report.md").write_text("changed\n")
 

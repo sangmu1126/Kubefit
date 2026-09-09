@@ -64,10 +64,12 @@ from safety import (
     PodKillExperimentRunner,
     SubprocessChangeK6Executor,
     assess_change_performance_pair,
+    assess_podkill_campaign,
     execute_change_bundle,
     execute_change_performance,
     inspect_deployment_change,
     load_change_bundle,
+    load_podkill_campaign_evidence,
     load_podkill_campaign_plan,
     render_validation_summary,
     validate_podkill_prerequisites,
@@ -76,6 +78,7 @@ from safety import (
     write_change_performance_artifact,
     write_change_performance_pair,
     write_podkill_artifact,
+    write_podkill_campaign_evidence,
     write_podkill_campaign_plan,
 )
 
@@ -349,6 +352,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     podkill_campaign.add_argument("--change", required=True, type=Path)
     podkill_campaign.add_argument("--performance-pair", required=True, type=Path)
+    podkill_campaign.add_argument("--context", required=True)
     podkill_campaign.add_argument("--planned-trials", required=True, type=_positive_int)
     podkill_campaign.add_argument(
         "--allowed-failed-trials", type=_non_negative_int, default=0
@@ -361,6 +365,19 @@ def build_parser() -> argparse.ArgumentParser:
     )
     podkill_campaign.add_argument(
         "--output-dir", type=Path, default=Path(".kubefit/podkill-campaigns")
+    )
+    podkill_campaign_check = subcommands.add_parser(
+        "podkill-campaign-check",
+        help="assess and persist a complete preregistered PodKill campaign",
+    )
+    podkill_campaign_check.add_argument("--plan", required=True, type=Path)
+    podkill_campaign_check.add_argument(
+        "--trial", required=True, action="append", type=Path
+    )
+    podkill_campaign_check.add_argument(
+        "--output-dir",
+        type=Path,
+        default=Path(".kubefit/podkill-campaign-evidence"),
     )
     campaign_plan = subcommands.add_parser(
         "benchmark-campaign-plan",
@@ -478,6 +495,9 @@ def main(argv: list[str] | None = None) -> None:
         return
     if args.command == "podkill-campaign-plan":
         _run_podkill_campaign_plan(args)
+        return
+    if args.command == "podkill-campaign-check":
+        _run_podkill_campaign_check(args)
         return
     if args.command == "benchmark-campaign-plan":
         _run_benchmark_campaign_plan(args)
@@ -1015,6 +1035,7 @@ def _run_podkill_campaign_plan(args: argparse.Namespace) -> None:
             args.output_dir,
             args.change,
             args.performance_pair,
+            args.context,
             args.planned_trials,
             args.allowed_failed_trials,
             args.service_recovery_limit_seconds,
@@ -1034,6 +1055,35 @@ def _run_podkill_campaign_plan(args: argparse.Namespace) -> None:
             sort_keys=True,
         )
     )
+
+
+def _run_podkill_campaign_check(args: argparse.Namespace) -> None:
+    try:
+        assessment = assess_podkill_campaign(args.plan, args.trial)
+    except RuntimeError as exc:
+        raise SystemExit(str(exc)) from exc
+    if assessment.status in {"incomplete", "invalid"}:
+        print(assessment.model_dump_json(indent=2))
+        raise SystemExit(2)
+    try:
+        artifact = write_podkill_campaign_evidence(
+            args.output_dir, args.plan, args.trial
+        )
+        loaded = load_podkill_campaign_evidence(artifact.path)
+    except RuntimeError as exc:
+        raise SystemExit(str(exc)) from exc
+    output = assessment.model_dump(mode="json")
+    output.update(
+        {
+            "artifact_id": artifact.artifact_id,
+            "path": str(artifact.path),
+            "reused": artifact.reused,
+            "trial_ids": loaded.assessment.trial_ids,
+        }
+    )
+    print(json.dumps(output, indent=2, sort_keys=True))
+    if assessment.status == "fail":
+        raise SystemExit(2)
 
 
 def _run_benchmark_campaign_plan(args: argparse.Namespace) -> None:

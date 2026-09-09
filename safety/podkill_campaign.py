@@ -25,6 +25,7 @@ class PodKillCampaignPlan(BaseModel):
     performance_pair_id: str = Field(
         pattern=r"^change-performance-pair-[0-9a-f]{32}$"
     )
+    context: str = Field(pattern=r"^kind-[A-Za-z0-9._-]+$")
     target: ManifestTarget
     planned_trials: int = Field(ge=3, le=100)
     allowed_failed_trials: int = Field(ge=0)
@@ -73,6 +74,7 @@ _LIMITATIONS = [
 def create_podkill_campaign_plan(
     change_id: str,
     performance_pair_id: str,
+    context: str,
     target: ManifestTarget,
     planned_trials: int,
     allowed_failed_trials: int,
@@ -83,6 +85,7 @@ def create_podkill_campaign_plan(
         "schema_version": 1,
         "change_id": change_id,
         "performance_pair_id": performance_pair_id,
+        "context": context,
         "target": target.model_dump(mode="json"),
         "planned_trials": planned_trials,
         "allowed_failed_trials": allowed_failed_trials,
@@ -110,6 +113,7 @@ def write_podkill_campaign_plan(
     output_root: Path,
     change_path: Path,
     pair_path: Path,
+    context: str,
     planned_trials: int,
     allowed_failed_trials: int,
     service_recovery_limit_seconds: float,
@@ -124,6 +128,7 @@ def write_podkill_campaign_plan(
     plan = create_podkill_campaign_plan(
         change.artifact_id,
         pair.artifact_id,
+        context,
         pair.before_after.run.target,
         planned_trials,
         allowed_failed_trials,
@@ -216,6 +221,7 @@ def _report(plan: PodKillCampaignPlan) -> str:
         f"- Campaign: `{plan.campaign_id}`",
         f"- Change: `{plan.change_id}`",
         f"- Performance Pair: `{plan.performance_pair_id}`",
+        f"- Context: `{plan.context}`",
         f"- Target: `{plan.target.namespace}/{plan.target.deployment}:{plan.target.container}`",
         f"- Planned trials: `{plan.planned_trials}`",
         f"- Allowed failed trials: `{plan.allowed_failed_trials}`",

@@ -1020,6 +1020,8 @@ def test_podkill_campaign_plan_persists_explicit_policy(
             "change",
             "--performance-pair",
             "pair",
+            "--context",
+            "kind-kubefit",
             "--planned-trials",
             "5",
             "--allowed-failed-trials",
@@ -1038,6 +1040,7 @@ def test_podkill_campaign_plan_persists_explicit_policy(
             Path("campaigns"),
             Path("change"),
             Path("pair"),
+            "kind-kubefit",
             5,
             1,
             3.0,
@@ -1047,6 +1050,75 @@ def test_podkill_campaign_plan_persists_explicit_policy(
     output = json.loads(capsys.readouterr().out)
     assert output["planned_trials"] == 5
     assert output["path"] == "campaigns/podkill-campaign-abc"
+
+
+@pytest.mark.parametrize(
+    ("status", "persisted", "exit_code"),
+    [
+        ("pass", True, None),
+        ("fail", True, 2),
+        ("incomplete", False, 2),
+        ("invalid", False, 2),
+    ],
+)
+def test_podkill_campaign_check_persists_only_complete_valid_outcomes(
+    status: str,
+    persisted: bool,
+    exit_code: int | None,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    writes: list[object] = []
+    assessment = SimpleNamespace(
+        status=status,
+        trial_ids=["podkill-one", "podkill-two", "podkill-three"],
+        model_dump_json=lambda **_: json.dumps({"status": status}),
+        model_dump=lambda **_: {"status": status},
+    )
+    monkeypatch.setattr(
+        cli_module, "assess_podkill_campaign", lambda plan, trials: assessment
+    )
+
+    def write(output, plan, trials):
+        writes.append((output, plan, trials))
+        return SimpleNamespace(
+            artifact_id="podkill-campaign-evidence-" + "a" * 32,
+            path=output / "podkill-campaign-evidence-abc",
+            reused=False,
+        )
+
+    monkeypatch.setattr(cli_module, "write_podkill_campaign_evidence", write)
+    monkeypatch.setattr(
+        cli_module,
+        "load_podkill_campaign_evidence",
+        lambda path: SimpleNamespace(assessment=assessment),
+    )
+    arguments = [
+        "podkill-campaign-check",
+        "--plan",
+        "campaign",
+        "--trial",
+        "trial-one",
+        "--trial",
+        "trial-two",
+        "--trial",
+        "trial-three",
+        "--output-dir",
+        "evidence",
+    ]
+
+    if exit_code is None:
+        cli_module.main(arguments)
+    else:
+        with pytest.raises(SystemExit) as raised:
+            cli_module.main(arguments)
+        assert raised.value.code == exit_code
+
+    assert bool(writes) is persisted
+    output = json.loads(capsys.readouterr().out)
+    assert output["status"] == status
+    if persisted:
+        assert output["artifact_id"].startswith("podkill-campaign-evidence-")
 
 
 def test_benchmark_campaign_plan_reads_seed_file_and_prints_frozen_schedule(
