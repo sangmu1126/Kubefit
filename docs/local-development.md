@@ -533,6 +533,21 @@ The run model derives chronological order from non-overlapping measurement times
 and rejects a declared order that conflicts with them. Both commands restore base.
 They do not yet form a counterbalanced Pair verdict.
 
+After both restored artifacts exist, assess them without cluster mutation:
+
+```bash
+kubefit benchmark-change-pair \
+  --first .kubefit/change-performance/change-performance-<before-first> \
+  --second .kubefit/change-performance/change-performance-<candidate-first> \
+  --output-dir .kubefit/change-performance-pairs
+```
+
+Input order does not affect the Pair identity. The loader recursively verifies the two
+embedded performance artifacts and replays the assessment. A single failed trial or
+disagreement between policy check statuses fails the Pair rather than averaging metrics.
+FAIL is persisted for diagnosis and exits 2. Duplicate, same-order, cross-change,
+cross-target, cross-profile, or cross-policy inputs are INVALID and are not published.
+
 If an aggressive candidate fails, keep that immutable result and do not repeat the
 same trial until it passes. A documented workload-specific CPU floor can be raised
 from retained schema v2 evidence without recollecting or altering percentiles:

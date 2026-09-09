@@ -36,7 +36,7 @@ be mistaken for one another:
 
 | Claim | Reproducible evidence |
 |---|---|
-| Resource recommendations, package boundaries, and the demo contract are safety-gated | 466 Python tests on the current source |
+| Resource recommendations, package boundaries, and the demo contract are safety-gated | 477 Python tests on the current source |
 | The review UI builds and behaves as specified | 19 dashboard tests and a production Vite build |
 | The package renders with least-privilege defaults | Helm lint and default-template validation |
 | The production image actually starts | Docker startup, numeric non-root user, health, dashboard, and disabled-storage smoke checks |
@@ -521,6 +521,19 @@ Run a second independent trial with `--execution-order after-before` to collect 
 opposite order. Each artifact records and revalidates its order from measurement
 timestamps and still carries a sequential-order warning until a later Pair assessment
 binds both artifacts.
+
+Bind the two artifacts into a self-contained counterbalanced Pair:
+
+```bash
+kubefit benchmark-change-pair \
+  --first .kubefit/change-performance/change-performance-<first> \
+  --second .kubefit/change-performance/change-performance-<second>
+```
+
+The Pair requires distinct opposite-order trials with the same change, target, profile,
+and policy. Both trials and their non-order check statuses must pass. A failed Pair is
+retained and exits 2; INVALID inputs exit 2 without publishing a Pair artifact. The Pair
+reduces directional order bias but does not establish statistical significance.
 
 Repeated evidence can be preregistered with `kubefit benchmark-campaign-plan`. The
 immutable plan fixes an explicit pair count, balances and randomizes which execution
