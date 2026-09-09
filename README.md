@@ -36,7 +36,7 @@ be mistaken for one another:
 
 | Claim | Reproducible evidence |
 |---|---|
-| Resource recommendations, package boundaries, and the demo contract are safety-gated | 477 Python tests on the current source |
+| Resource recommendations, package boundaries, and the demo contract are safety-gated | 484 Python tests on the current source |
 | The review UI builds and behaves as specified | 19 dashboard tests and a production Vite build |
 | The package renders with least-privilege defaults | Helm lint and default-template validation |
 | The production image actually starts | Docker startup, numeric non-root user, health, dashboard, and disabled-storage smoke checks |
@@ -534,6 +534,20 @@ The Pair requires distinct opposite-order trials with the same change, target, p
 and policy. Both trials and their non-order check statuses must pass. A failed Pair is
 retained and exits 2; INVALID inputs exit 2 without publishing a Pair artifact. The Pair
 reduces directional order bias but does not establish statistical significance.
+
+The next fault-safety boundary is available as a read-only preflight:
+
+```bash
+kubefit podkill-preflight \
+  --context kind-kubefit \
+  --namespace demo \
+  --deployment api \
+  --container api
+```
+
+It requires at least two fully ready replicas, follows Deployment UID → owned ReplicaSet
+UID → owned Pod UID, excludes selector collisions, and deterministically selects the
+oldest ready Pod. The command does not delete anything yet and is not fault evidence.
 
 Repeated evidence can be preregistered with `kubefit benchmark-campaign-plan`. The
 immutable plan fixes an explicit pair count, balances and randomizes which execution

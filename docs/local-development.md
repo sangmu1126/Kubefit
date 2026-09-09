@@ -548,6 +548,25 @@ disagreement between policy check statuses fails the Pair rather than averaging 
 FAIL is persisted for diagnosis and exits 2. Duplicate, same-order, cross-change,
 cross-target, cross-profile, or cross-policy inputs are INVALID and are not published.
 
+### Inspect the PodKill safety boundary
+
+Before enabling mutation, verify which exact Pod would be eligible:
+
+```bash
+kubefit podkill-preflight \
+  --context kind-kubefit \
+  --namespace demo \
+  --deployment api \
+  --container api
+```
+
+This command is read-only. It rejects non-kind contexts, fewer than two replicas,
+unobserved Deployment generations, partial replica availability, missing container
+readiness, terminating Pods, and Pod label collisions not owned through the current
+Deployment UID and one of its ReplicaSet UIDs. The oldest verified Pod is selected so
+the rule is deterministic. No delete, HTTP probe, recovery verdict, or artifact is
+created at this stage.
+
 If an aggressive candidate fails, keep that immutable result and do not repeat the
 same trial until it passes. A documented workload-specific CPU floor can be raised
 from retained schema v2 evidence without recollecting or altering percentiles:

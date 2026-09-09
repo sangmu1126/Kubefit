@@ -176,6 +176,20 @@ Pair는 같은 change·target·profile·policy를 사용한 서로 다른 반대
 Pair는 보존 후 종료 코드 2를 반환하고, INVALID 입력은 Pair artifact를 만들지 않습니다.
 이는 방향성 순서 편향을 줄이지만 통계적 유의성을 증명하지 않습니다.
 
+다음 장애 안전 경계는 read-only preflight로 제공합니다.
+
+```bash
+kubefit podkill-preflight \
+  --context kind-kubefit \
+  --namespace demo \
+  --deployment api \
+  --container api
+```
+
+최소 2개의 완전히 ready인 replica를 요구하고 Deployment UID → 소유 ReplicaSet UID →
+소유 Pod UID를 따라가 selector 충돌을 제외한 뒤 가장 오래된 ready Pod를 결정적으로
+선택합니다. 아직 아무 Pod도 삭제하지 않으며 장애 증거도 아닙니다.
+
 ## 검증된 결과
 
 KubeFit은 비용 절감 예상치, 단일 Pair 결과, 반복 campaign을 서로 다른 증거로
@@ -183,7 +197,7 @@ KubeFit은 비용 절감 예상치, 단일 Pair 결과, 반복 campaign을 서�
 
 | 주장 | 재현 가능한 근거 |
 |---|---|
-| 추천·artifact·데모 계약이 안전 조건으로 보호됨 | 현재 소스 기준 Python 테스트 477개 |
+| 추천·artifact·데모 계약이 안전 조건으로 보호됨 | 현재 소스 기준 Python 테스트 484개 |
 | Dashboard가 명세대로 동작하고 빌드됨 | 테스트 19개와 Vite production build |
 | Helm 패키지가 최소 권한 기본값으로 렌더링됨 | Helm lint 및 기본 template 검증 |
 | 공개 이미지가 실제로 기동함 | non-root `10001:10001`, health, Dashboard, 저장 비활성 smoke test |
@@ -325,7 +339,7 @@ tests/           단위·통합·계약 테스트
 - [구현 순서와 완료 기준](docs/implementation-plan.md)
 - [아키텍처](docs/architecture.md)
 - [로컬 개발·kind·Prometheus 실행](docs/local-development.md)
-- [개발기록 87개](docs/devlog/README.md)
+- [개발기록 88개](docs/devlog/README.md)
 - [GitHub 실증 절차](docs/live-github-demo.md)
 - [기여 안내](CONTRIBUTING.md)
 - [보안 정책](SECURITY.md)
