@@ -124,7 +124,9 @@ def write_podkill_campaign_plan(
             change_path, pair_path, pair_target(pair_path)
         )
     except RuntimeError as exc:
-        raise PodKillCampaignError("PodKill campaign prerequisites are invalid") from exc
+        raise PodKillCampaignError(
+            f"PodKill campaign prerequisites are invalid: {exc}"
+        ) from exc
     plan = create_podkill_campaign_plan(
         change.artifact_id,
         pair.artifact_id,

@@ -101,7 +101,10 @@ def test_rejects_failed_pair_without_creating_campaign_root(tmp_path: Path) -> N
     change, pair = prerequisites(tmp_path, failed_pair=True)
     output = tmp_path / "campaigns"
 
-    with pytest.raises(PodKillCampaignError, match="prerequisites are invalid"):
+    with pytest.raises(
+        PodKillCampaignError,
+        match="prerequisites are invalid: PodKill requires a passing performance Pair",
+    ):
         write_podkill_campaign_plan(
             output, change.path, pair.path, "kind-kubefit", 3, 0, 3, 30
         )
