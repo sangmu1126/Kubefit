@@ -36,7 +36,7 @@ be mistaken for one another:
 
 | Claim | Reproducible evidence |
 |---|---|
-| Resource recommendations, package boundaries, and the demo contract are safety-gated | 484 Python tests on the current source |
+| Resource recommendations, package boundaries, and the demo contract are safety-gated | 490 Python tests on the current source |
 | The review UI builds and behaves as specified | 19 dashboard tests and a production Vite build |
 | The package renders with least-privilege defaults | Helm lint and default-template validation |
 | The production image actually starts | Docker startup, numeric non-root user, health, dashboard, and disabled-storage smoke checks |
@@ -547,7 +547,10 @@ kubefit podkill-preflight \
 
 It requires at least two fully ready replicas, follows Deployment UID → owned ReplicaSet
 UID → owned Pod UID, excludes selector collisions, and deterministically selects the
-oldest ready Pod. The command does not delete anything yet and is not fault evidence.
+oldest ready Pod. The public command remains read-only and is not fault evidence. An
+internal runner now revalidates that complete preflight, performs one exact-name
+one-second-grace deletion, and measures both host-side HTTP success streak and new ready
+Pod UID under a bounded timeout. It is not exposed until immutable fault evidence exists.
 
 Repeated evidence can be preregistered with `kubefit benchmark-campaign-plan`. The
 immutable plan fixes an explicit pair count, balances and randomizes which execution

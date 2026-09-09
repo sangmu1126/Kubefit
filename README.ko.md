@@ -188,7 +188,10 @@ kubefit podkill-preflight \
 
 최소 2개의 완전히 ready인 replica를 요구하고 Deployment UID → 소유 ReplicaSet UID →
 소유 Pod UID를 따라가 selector 충돌을 제외한 뒤 가장 오래된 ready Pod를 결정적으로
-선택합니다. 아직 아무 Pod도 삭제하지 않으며 장애 증거도 아닙니다.
+선택합니다. 공개 명령은 계속 read-only이며 장애 증거도 아닙니다. 내부 runner는 전체
+preflight를 재검증한 후 exact Pod 이름을 1초 grace로 한 번 삭제하고, 제한 시간 안에서
+host 측 HTTP 연속 성공과 새로운 ready Pod UID를 함께 측정합니다. immutable 장애
+증거가 준비되기 전까지 외부 CLI로 노출하지 않습니다.
 
 ## 검증된 결과
 
@@ -197,7 +200,7 @@ KubeFit은 비용 절감 예상치, 단일 Pair 결과, 반복 campaign을 서�
 
 | 주장 | 재현 가능한 근거 |
 |---|---|
-| 추천·artifact·데모 계약이 안전 조건으로 보호됨 | 현재 소스 기준 Python 테스트 484개 |
+| 추천·artifact·데모 계약이 안전 조건으로 보호됨 | 현재 소스 기준 Python 테스트 490개 |
 | Dashboard가 명세대로 동작하고 빌드됨 | 테스트 19개와 Vite production build |
 | Helm 패키지가 최소 권한 기본값으로 렌더링됨 | Helm lint 및 기본 template 검증 |
 | 공개 이미지가 실제로 기동함 | non-root `10001:10001`, health, Dashboard, 저장 비활성 smoke test |
@@ -339,7 +342,7 @@ tests/           단위·통합·계약 테스트
 - [구현 순서와 완료 기준](docs/implementation-plan.md)
 - [아키텍처](docs/architecture.md)
 - [로컬 개발·kind·Prometheus 실행](docs/local-development.md)
-- [개발기록 88개](docs/devlog/README.md)
+- [개발기록 89개](docs/devlog/README.md)
 - [GitHub 실증 절차](docs/live-github-demo.md)
 - [기여 안내](CONTRIBUTING.md)
 - [보안 정책](SECURITY.md)

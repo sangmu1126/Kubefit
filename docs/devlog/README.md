@@ -110,6 +110,7 @@ evidence of engineering judgment than a final screenshot without context.
 | [0086](0086-opposite-order-generic-performance.md) | Opposite-order generic performance | Produce independently restored base-first and candidate-first artifacts |
 | [0087](0087-counterbalanced-generic-performance-pair.md) | Counterbalanced generic performance Pair | Bind two opposite-order trials without averaging away either failure |
 | [0088](0088-podkill-ownership-preflight.md) | PodKill ownership preflight | Select one eligible Pod through UID ownership without mutating the cluster |
+| [0089](0089-bounded-podkill-recovery-runner.md) | Bounded PodKill recovery runner | Revalidate, delete once, and measure HTTP plus replacement recovery internally |
 
 ## Visual language
 

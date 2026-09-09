@@ -567,6 +567,16 @@ Deployment UID and one of its ReplicaSet UIDs. The oldest verified Pod is select
 the rule is deterministic. No delete, HTTP probe, recovery verdict, or artifact is
 created at this stage.
 
+The internal `PodKillExperimentRunner` is intentionally not connected to this command
+yet. It re-runs the full preflight and requires the Deployment identity, generation,
+eligible Pod UID set, and deterministic selection to remain identical before issuing
+one exact-name deletion with a one-second grace period. It then samples the service from
+the host and waits for exactly one new ready Pod UID. PASS requires both a configurable
+consecutive HTTP-success streak and replacement readiness before the bounded timeout.
+The result recomputes service recovery from its samples. Until an immutable artifact and
+explicit mutation acknowledgement are added, this internal runner is not a supported
+operator workflow.
+
 If an aggressive candidate fails, keep that immutable result and do not repeat the
 same trial until it passes. A documented workload-specific CPU floor can be raised
 from retained schema v2 evidence without recollecting or altering percentiles:
