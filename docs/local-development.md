@@ -365,6 +365,140 @@ non-order policy check states, and both individual verdicts pass. PASS prints th
 assessment, report, hashes, and complete copies of both result bundles. `fail` or
 `invalid` returns exit code 2 after printing the reasons and does not publish a pair.
 
+For a CI-only verdict, use the same two results with `check`. When GitHub Actions sets
+`GITHUB_STEP_SUMMARY`, KubeFit appends the trial and policy tables automatically and
+returns exit code 2 for FAIL or INVALID:
+
+```bash
+kubefit check \
+  --first benchmarks/results/benchmark-<before-first-digest> \
+  --second benchmarks/results/benchmark-<candidate-first-digest>
+```
+
+Before running a benchmark, a PR can be restricted to the currently recognized
+Deployment fields. Obtain the base version outside the repository, then inspect the
+semantic YAML change:
+
+```bash
+git show origin/main:deploy/api.yaml > /tmp/kubefit-base.yaml
+kubefit inspect-change \
+  --base /tmp/kubefit-base.yaml \
+  --candidate deploy/api.yaml \
+  --namespace demo \
+  --deployment api
+```
+
+The command passes only when at least one image, replica, or CPU/memory resource field
+changed and no other Deployment field changed. Unsupported changes expose JSON Pointer
+paths but suppress their values. The untrusted-input boundary also rejects duplicate
+mapping keys, YAML anchors/aliases, symlinked inputs, and manifests above 1 MB. This
+scope result is not yet cryptographically bound
+to an arbitrary benchmark pair. For an existing KubeFit resource proposal, close that
+gap with the end-to-end gate:
+
+```bash
+kubefit validate \
+  --proposal .kubefit/proposals/proposal-<digest> \
+  --base /tmp/kubefit-base.yaml \
+  --candidate deploy/api.yaml \
+  --first benchmarks/results/benchmark-<before-first-digest> \
+  --second benchmarks/results/benchmark-<candidate-first-digest>
+```
+
+`validate` fully reloads every artifact, verifies both results reference the proposal,
+requires the provided manifests to be byte-identical to the proposal input and output,
+and enforces the Pair verdict. This exact binding intentionally rejects even a
+semantically equivalent rewritten candidate because it was not the measured proposal
+payload. Generic image/replica execution bundles remain outside the current boundary.
+
+### Consume the validation gate as a GitHub Action
+
+The repository root contains a Docker action that maps five required evidence paths
+directly to `kubefit validate`. On a Linux runner, after checking out the calling
+repository and downloading or generating its evidence directories:
+
+```yaml
+- name: Validate Kubernetes resource change
+  uses: sangmu1126/kubefit@<release-tag>
+  with:
+    proposal: .kubefit/proposals/proposal-<digest>
+    base: evidence/base.yaml
+    candidate: deploy/api.yaml
+    first-result: evidence/benchmark-<before-first-digest>
+    second-result: evidence/benchmark-<candidate-first-digest>
+```
+
+Docker container actions require a Linux runner with Docker. The current source was
+verified by building `Dockerfile.action`, mounting the retained evidence read-only, and
+observing PASS plus an appended Step Summary. The Action image is separate from the
+non-root API image so Linux runner-owned `0700` evidence remains readable; it contains
+no dashboard or cluster tooling and invokes only the read-only validation command. A
+real hosted-runner check remains release evidence, not a local claim.
+
+After building the Action image, verify both packaged verdict paths with retained
+repository-relative evidence:
+
+```bash
+deploy/local/verify-safety-action.sh \
+  kubefit-action:local \
+  .kubefit/proposals/proposal-<digest> \
+  .kubefit/proposals/proposal-<digest>/manifests/before/<source-path> \
+  .kubefit/proposals/proposal-<digest>/manifests/after/<source-path> \
+  benchmarks/pairs/benchmark-pair-<digest>/trials/benchmark-<first> \
+  benchmarks/pairs/benchmark-pair-<digest>/trials/benchmark-<second>
+```
+
+The script first expects PASS, then appends a newline to a temporary candidate and
+expects INVALID with exit code 2. Repository evidence is mounted read-only; temporary
+files and both `--rm` containers are removed on completion.
+
+### Freeze a generic Deployment change input
+
+Before a future image or replica benchmark can claim a result, freeze its exact inputs:
+
+```bash
+kubefit prepare-change \
+  --base /tmp/base.yaml \
+  --candidate deploy/api.yaml \
+  --namespace demo \
+  --deployment api \
+  --output-dir .kubefit/changes
+```
+
+The output is a content-addressed `change-<digest>` directory containing canonical
+change JSON and byte-exact manifests. Loading the bundle verifies its file set, sizes,
+hashes, aggregate digest, directory identity, and replayed semantic decision. Repeating
+the command with identical input reuses the same artifact. This is an input artifact;
+it does not yet authorize cluster mutation or claim performance/fault evidence.
+
+### Execute the frozen change on disposable kind
+
+Only after reviewing the semantic change, apply the exact bundle to an expendable
+local kind cluster:
+
+```bash
+kubefit execute-change \
+  --change .kubefit/changes/change-<digest> \
+  --context kind-kubefit \
+  --container api \
+  --confirm-disposable-cluster \
+  --rollout-timeout-seconds 120
+```
+
+The command accepts only an explicit `kind-*` context. It applies and waits for the
+base, applies and waits for the candidate, and then reapplies and waits for the base.
+Base restoration is also attempted after a failed rollout or `Ctrl+C`; a restoration
+failure is reported as the dominant safety error. A PASS proves only that both exact
+Deployment manifests reached the controller's rollout-ready condition and the base was
+restored. It does not measure latency, cost, throttling, OOM behavior, or fault recovery.
+
+The fixed profile at `benchmarks/k6/resource_profile.js` also accepts
+`KUBEFIT_CHANGE_ID=change-<digest>` instead of `KUBEFIT_PROPOSAL_ID`. Exactly one
+identity is required. The generic executor validates that emitted identity and retains
+the typed summary bytes, raw k6 samples, timestamps, recovery observation, and their
+hashes. It is currently an internal collection contract: no CLI orchestration or
+generic verdict is available yet.
+
 If an aggressive candidate fails, keep that immutable result and do not repeat the
 same trial until it passes. A documented workload-specific CPU floor can be raised
 from retained schema v2 evidence without recollecting or altering percentiles:

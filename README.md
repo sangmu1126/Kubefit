@@ -36,7 +36,7 @@ be mistaken for one another:
 
 | Claim | Reproducible evidence |
 |---|---|
-| Resource recommendations, package boundaries, and the demo contract are safety-gated | 403 Python tests on the current source |
+| Resource recommendations, package boundaries, and the demo contract are safety-gated | 446 Python tests on the current source |
 | The review UI builds and behaves as specified | 19 dashboard tests and a production Vite build |
 | The package renders with least-privilege defaults | Helm lint and default-template validation |
 | The production image actually starts | Docker startup, numeric non-root user, health, dashboard, and disabled-storage smoke checks |
@@ -84,6 +84,7 @@ api/             FastAPI application
 dashboard/       React recommendation review dashboard
 deploy/          Helm chart and demo manifests
 benchmarks/      Load tests and reproducible comparisons
+safety/          Change inspection, immutable change bundles, and CI evidence binding
 docs/            Architecture, security, and evaluation records
 tests/           Unit and integration tests
 ```
@@ -411,6 +412,94 @@ significance; this self-contained pair is a mandatory publication input.
 The same verified pair supplies an order-aware metric table in the Draft PR and a
 read-only dashboard plot. It reports whether both changes improved, regressed, stayed
 equal, or pointed in different directions, without averaging the two trials.
+
+For CI, `kubefit check` evaluates the same two immutable result artifacts without
+publishing a pair. It prints structured JSON, appends a readable report to
+`GITHUB_STEP_SUMMARY` when that variable is present, and exits with status 2 unless
+the pair passes:
+
+```bash
+kubefit check \
+  --first benchmarks/results/benchmark-<before-first-digest> \
+  --second benchmarks/results/benchmark-<candidate-first-digest>
+```
+
+`kubefit inspect-change` is a scope gate for a PR's base and candidate
+manifest. It ignores YAML formatting, reports image, replica, and CPU/memory resource
+changes, and rejects unrelated Deployment changes. Unsupported paths are reported
+without their values so CI logs do not disclose environment data.
+
+```bash
+kubefit inspect-change \
+  --base /tmp/base.yaml \
+  --candidate deploy/api.yaml \
+  --namespace demo \
+  --deployment api
+```
+
+For resource proposals, `kubefit validate` closes the evidence-binding gap: it fully
+reloads the immutable proposal and both results, requires the pair to reference that
+proposal, requires the supplied base/candidate files to be byte-identical to the
+proposal input/output, and then enforces the Pair verdict. It emits one end-to-end
+Step Summary and exits with status 2 for FAIL or INVALID. Generic image and replica
+benchmark bundles are not implemented yet.
+
+```bash
+kubefit validate \
+  --proposal .kubefit/proposals/proposal-<digest> \
+  --base /tmp/base.yaml \
+  --candidate deploy/api.yaml \
+  --first benchmarks/results/benchmark-<before-first-digest> \
+  --second benchmarks/results/benchmark-<candidate-first-digest>
+```
+
+After a release tag contains this action metadata, a Linux GitHub Actions job can run
+the same gate without installing Python dependencies. The calling job must first make
+the proposal and both result directories available in its workspace:
+
+```yaml
+- name: Validate Kubernetes resource change
+  uses: sangmu1126/kubefit@<release-tag>
+  with:
+    proposal: .kubefit/proposals/proposal-<digest>
+    base: evidence/base.yaml
+    candidate: deploy/api.yaml
+    first-result: evidence/benchmark-<before-first-digest>
+    second-result: evidence/benchmark-<candidate-first-digest>
+```
+
+The Docker action passes each input as a direct process argument rather than evaluating
+it in a shell. Local Docker build and container execution are verified; remote GitHub
+Actions execution requires publishing a new tag and is not claimed by the current
+unreleased source.
+
+As the first boundary for image and replica execution, `kubefit prepare-change`
+publishes the exact base/candidate manifests and replayed semantic diff as an immutable
+`change-<digest>` bundle. Identical retries reuse the same directory; changed, partial,
+symlinked, or non-canonical contents are rejected on load. This bundle identifies input
+evidence only. `kubefit execute-change` can then check that those exact manifests deploy
+and become ready on an explicitly acknowledged disposable kind cluster, restoring the
+base even after candidate failure or interruption. This is not benchmark or PodKill
+evidence.
+
+```bash
+kubefit prepare-change \
+  --base /tmp/base.yaml \
+  --candidate deploy/api.yaml \
+  --namespace demo \
+  --deployment api
+
+kubefit execute-change \
+  --change .kubefit/changes/change-<digest> \
+  --context kind-kubefit \
+  --container api \
+  --confirm-disposable-cluster
+```
+
+The shared fixed k6 profile now accepts a mutually exclusive `change_id` identity, and
+the generic load executor preserves typed summary bytes, raw samples, timestamps, and
+their SHA-256 digests. This is a collection boundary under development; it is not yet
+wired to `execute-change` and does not produce a generic performance verdict.
 
 Repeated evidence can be preregistered with `kubefit benchmark-campaign-plan`. The
 immutable plan fixes an explicit pair count, balances and randomizes which execution

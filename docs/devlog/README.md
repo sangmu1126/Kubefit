@@ -96,6 +96,15 @@ evidence of engineering judgment than a final screenshot without context.
 | [0072](0072-submission-evidence-hardening.md) | Submission evidence hardening | Replace an unusable security contact, bind scanner-reported SPDX evidence to v0.3.2, and correct claims without hiding benchmark failures |
 | [0073](0073-korean-readme-entrypoint.md) | Korean README entry point | Make Korean the default repository introduction while preserving the complete English reference as an explicit language option |
 | [0074](0074-english-readme-entrypoint.md) | English README entry point | Restore English as the default global open-source entry while preserving the Korean evaluator path |
+| [0075](0075-observable-demo-walkthrough.md) | Observable demo walkthrough | Make the runtime path visible without conflating live and retained evidence |
+| [0076](0076-remove-unused-kube-proxy-target.md) | Remove unused kube-proxy target | Remove a known-down scrape target not used by KubeFit collection |
+| [0077](0077-target-health-first-walkthrough.md) | Target-health-first walkthrough | Use cAdvisor target health as the stable default Prometheus check |
+| [0078](0078-pr-safety-check-foundation.md) | PR safety check foundation | Turn Pair decisions into CI output and classify supported Deployment changes |
+| [0079](0079-reusable-github-safety-action.md) | Reusable GitHub safety Action | Package the bound resource gate as a direct-argument Docker Action |
+| [0080](0080-action-fail-closed-smoke.md) | Action fail-closed smoke | Prove packaged PASS and byte-mismatch INVALID behavior in disposable containers |
+| [0081](0081-immutable-generic-change-bundle.md) | Immutable generic change bundle | Freeze exact image, replica, or resource inputs before disposable execution |
+| [0082](0082-restoring-generic-change-runner.md) | Restoring generic change runner | Execute exact bundles on disposable kind and make base restoration mandatory |
+| [0083](0083-change-bound-fixed-load-evidence.md) | Change-bound fixed-load evidence | Bind shared k6 outputs and raw samples to an immutable generic change ID |
 
 ## Visual language
 

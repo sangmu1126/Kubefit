@@ -61,6 +61,89 @@ Kubernetes Deployment + Prometheus 시계열
 HPA 추천, 멀티클라우드 가격 자동 수집, 장애 예측, Terraform 생성, AI 챗봇은 현재
 MVP 범위에 포함하지 않습니다.
 
+## 변경 안전성 검증 고도화
+
+`kubefit check`는 반대 순서로 실행한 두 개의 immutable benchmark 결과를 같은
+정책으로 다시 판정합니다. 판정 JSON을 출력하고, GitHub Actions에서는
+`GITHUB_STEP_SUMMARY`에 표를 추가하며, PASS가 아니면 종료 코드 2를 반환합니다.
+
+```bash
+kubefit check \
+  --first benchmarks/results/benchmark-<before-first-digest> \
+  --second benchmarks/results/benchmark-<candidate-first-digest>
+```
+
+`kubefit inspect-change`는 PR의 base/candidate YAML에서 Deployment의 image,
+replicas, CPU·메모리 resources 변경을 추출합니다. 다른 필드가 섞이면 안전 범위 밖으로
+판정하며, 환경변수 같은 값이 CI 로그에 노출되지 않도록 미지원 변경은 경로만 출력합니다.
+
+```bash
+kubefit inspect-change \
+  --base /tmp/base.yaml \
+  --candidate deploy/api.yaml \
+  --namespace demo \
+  --deployment api
+```
+
+resource 추천에는 `kubefit validate`를 사용해 immutable proposal, 정확한 base/candidate
+파일, 반대 순서 benchmark 두 개를 한 번에 결합할 수 있습니다. 파일이 proposal의
+입력·출력과 byte 단위로 같지 않거나 Pair가 해당 proposal을 참조하지 않으면 INVALID로
+차단합니다. 임의의 image·replica 변경을 위한 범용 benchmark bundle은 아직 없습니다.
+
+```bash
+kubefit validate \
+  --proposal .kubefit/proposals/proposal-<digest> \
+  --base /tmp/base.yaml \
+  --candidate deploy/api.yaml \
+  --first benchmarks/results/benchmark-<before-first-digest> \
+  --second benchmarks/results/benchmark-<candidate-first-digest>
+```
+
+이 `action.yml`이 포함된 새 릴리스 태그를 만든 뒤에는 Linux GitHub Actions에서 Python
+환경을 별도로 설치하지 않고 같은 게이트를 실행할 수 있습니다. 호출 job은 proposal과
+두 result 디렉터리를 먼저 workspace에 준비해야 합니다.
+
+```yaml
+- name: Validate Kubernetes resource change
+  uses: sangmu1126/kubefit@<release-tag>
+  with:
+    proposal: .kubefit/proposals/proposal-<digest>
+    base: evidence/base.yaml
+    candidate: deploy/api.yaml
+    first-result: evidence/benchmark-<before-first-digest>
+    second-result: evidence/benchmark-<candidate-first-digest>
+```
+
+Docker Action은 입력을 shell 문자열로 실행하지 않고 `kubefit validate`의 개별 인자로
+전달합니다. 로컬 Docker build와 컨테이너 실행은 검증했지만, 아직 새 태그를 게시하지
+않았으므로 원격 GitHub Actions 실행까지 완료했다고 주장하지 않습니다.
+
+image·replica 실행 검증의 첫 경계로 `kubefit prepare-change`도 제공합니다.
+정확한 base/candidate YAML과 재생된 의미적 diff를 immutable `change-<digest>` bundle로
+저장하며, 같은 입력은 같은 artifact를 재사용합니다. `kubefit execute-change`는 명시적으로
+확인한 disposable kind 클러스터에서 이 정확한 YAML의 배포·readiness를 검사하고, 후보가
+실패하거나 실행이 중단돼도 base 복원을 시도합니다. 이는 benchmark 또는 PodKill 증거가
+아닙니다.
+
+```bash
+kubefit prepare-change \
+  --base /tmp/base.yaml \
+  --candidate deploy/api.yaml \
+  --namespace demo \
+  --deployment api
+
+kubefit execute-change \
+  --change .kubefit/changes/change-<digest> \
+  --context kind-kubefit \
+  --container api \
+  --confirm-disposable-cluster
+```
+
+공유 고정 k6 프로파일은 이제 상호 배타적인 `change_id` 식별자를 받을 수 있으며,
+generic load executor는 typed summary, 원시 sample, 실행 시각과 SHA-256 digest를
+보존합니다. 아직 `execute-change`와 연결되지 않은 수집 경계이므로 generic 성능
+PASS/FAIL을 생성한다고 주장하지 않습니다.
+
 ## 검증된 결과
 
 KubeFit은 비용 절감 예상치, 단일 Pair 결과, 반복 campaign을 서로 다른 증거로
@@ -68,7 +151,7 @@ KubeFit은 비용 절감 예상치, 단일 Pair 결과, 반복 campaign을 서�
 
 | 주장 | 재현 가능한 근거 |
 |---|---|
-| 추천·artifact·데모 계약이 안전 조건으로 보호됨 | 현재 소스 기준 Python 테스트 403개 |
+| 추천·artifact·데모 계약이 안전 조건으로 보호됨 | 현재 소스 기준 Python 테스트 446개 |
 | Dashboard가 명세대로 동작하고 빌드됨 | 테스트 19개와 Vite production build |
 | Helm 패키지가 최소 권한 기본값으로 렌더링됨 | Helm lint 및 기본 template 검증 |
 | 공개 이미지가 실제로 기동함 | non-root `10001:10001`, health, Dashboard, 저장 비활성 smoke test |
@@ -200,6 +283,7 @@ api/             FastAPI 애플리케이션과 CLI
 dashboard/       React 추천 검토 Dashboard
 deploy/          Helm chart와 로컬 데모 환경
 benchmarks/      k6 부하 테스트와 재현 가능한 비교
+safety/          변경 분석, immutable change bundle, CI 증거 결합
 docs/            아키텍처·보안·평가·개발기록
 tests/           단위·통합·계약 테스트
 ```
@@ -209,7 +293,7 @@ tests/           단위·통합·계약 테스트
 - [구현 순서와 완료 기준](docs/implementation-plan.md)
 - [아키텍처](docs/architecture.md)
 - [로컬 개발·kind·Prometheus 실행](docs/local-development.md)
-- [개발기록 74개](docs/devlog/README.md)
+- [개발기록 83개](docs/devlog/README.md)
 - [GitHub 실증 절차](docs/live-github-demo.md)
 - [기여 안내](CONTRIBUTING.md)
 - [보안 정책](SECURITY.md)
