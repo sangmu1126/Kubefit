@@ -535,7 +535,7 @@ and policy. Both trials and their non-order check statuses must pass. A failed P
 retained and exits 2; INVALID inputs exit 2 without publishing a Pair artifact. The Pair
 reduces directional order bias but does not establish statistical significance.
 
-The next fault-safety boundary is available as a read-only preflight:
+The fault-safety boundary starts with a read-only preflight:
 
 ```bash
 kubefit podkill-preflight \
@@ -547,10 +547,30 @@ kubefit podkill-preflight \
 
 It requires at least two fully ready replicas, follows Deployment UID → owned ReplicaSet
 UID → owned Pod UID, excludes selector collisions, and deterministically selects the
-oldest ready Pod. The public command remains read-only and is not fault evidence. An
-internal runner now revalidates that complete preflight, performs one exact-name
-one-second-grace deletion, and measures both host-side HTTP success streak and new ready
-Pod UID under a bounded timeout. It is not exposed until immutable fault evidence exists.
+oldest ready Pod. The preflight itself remains read-only and is not fault evidence.
+
+After both generic performance orders pass and are bound into one Pair, the controlled
+experiment can be run on an explicitly acknowledged disposable kind cluster:
+
+```bash
+kubefit podkill-run \
+  --change .kubefit/changes/change-<digest> \
+  --performance-pair \
+    .kubefit/change-performance-pairs/change-performance-pair-<digest> \
+  --target-url http://127.0.0.1:8080 \
+  --context kind-kubefit \
+  --container api \
+  --confirm-disposable-cluster \
+  --confirm-pod-deletion
+```
+
+The command verifies the exact change, passing Pair, and target before entering a
+workload-scoped lock. It then refreshes the complete ownership preflight, deletes one
+exact Pod name with a one-second grace period, and measures both a host-side HTTP
+success streak and a new ready Pod UID under a bounded timeout. PASS and timeout FAIL
+are written as self-contained, content-addressed `podkill-<digest>` evidence; FAIL exits
+with code 2. This path is locally unit-tested and has not yet been exercised against a
+live cluster, so the repository does not claim observed recovery performance.
 
 Repeated evidence can be preregistered with `kubefit benchmark-campaign-plan`. The
 immutable plan fixes an explicit pair count, balances and randomizes which execution
