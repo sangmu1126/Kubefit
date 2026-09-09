@@ -66,6 +66,12 @@ from safety.performance_pair_artifact import (
     load_change_performance_pair,
     write_change_performance_pair,
 )
+from safety.podkill import (
+    KubectlPodKillPreflight,
+    PodKillCandidate,
+    PodKillPreflight,
+    PodKillPreflightError,
+)
 from safety.runner import (
     ChangeExecutionError,
     ChangeExecutionResult,
@@ -110,6 +116,10 @@ __all__ = [
     "LoadedChangeBundle",
     "LoadedChangePerformanceArtifact",
     "LoadedChangePerformancePair",
+    "KubectlPodKillPreflight",
+    "PodKillCandidate",
+    "PodKillPreflight",
+    "PodKillPreflightError",
     "SafetyGateCheck",
     "SafetyGateResult",
     "SubprocessChangeK6Executor",

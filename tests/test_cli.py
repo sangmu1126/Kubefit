@@ -768,6 +768,65 @@ def test_benchmark_change_pair_preserves_fail_but_not_invalid(
     assert json.loads(capsys.readouterr().out)["status"] == status
 
 
+def test_podkill_preflight_builds_explicit_target_and_prints_selection(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    calls: list[object] = []
+
+    class Inspector:
+        def __init__(self, context: str) -> None:
+            calls.append(("context", context))
+
+        def inspect(self, target):
+            calls.append(("target", target))
+            return SimpleNamespace(
+                model_dump_json=lambda **_: json.dumps(
+                    {"selected": {"pod": "api-old", "pod_uid": "pod-uid"}}
+                )
+            )
+
+    monkeypatch.setattr(cli_module, "KubectlPodKillPreflight", Inspector)
+
+    cli_module.main(
+        [
+            "podkill-preflight",
+            "--context",
+            "kind-kubefit",
+            "--namespace",
+            "demo",
+            "--deployment",
+            "api",
+            "--container",
+            "api",
+        ]
+    )
+
+    assert calls[0] == ("context", "kind-kubefit")
+    assert calls[1][0] == "target"
+    assert calls[1][1].model_dump() == {
+        "namespace": "demo",
+        "deployment": "api",
+        "container": "api",
+    }
+    assert json.loads(capsys.readouterr().out)["selected"]["pod"] == "api-old"
+
+
+def test_podkill_preflight_rejects_non_kind_context() -> None:
+    with pytest.raises(SystemExit, match=r"kind-\*"):
+        cli_module.main(
+            [
+                "podkill-preflight",
+                "--context",
+                "production",
+                "--deployment",
+                "api",
+                "--container",
+                "api",
+            ]
+        )
+
+
 def test_benchmark_campaign_plan_reads_seed_file_and_prints_frozen_schedule(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

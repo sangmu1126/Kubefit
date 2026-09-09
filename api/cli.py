@@ -59,6 +59,7 @@ from safety import (
     ChangeBundleError,
     ChangeExecutionError,
     DeploymentChangeError,
+    KubectlPodKillPreflight,
     SubprocessChangeK6Executor,
     assess_change_performance_pair,
     execute_change_bundle,
@@ -271,6 +272,14 @@ def build_parser() -> argparse.ArgumentParser:
     benchmark_change_pair.add_argument(
         "--output-dir", type=Path, default=Path(".kubefit/change-performance-pairs")
     )
+    podkill_preflight = subcommands.add_parser(
+        "podkill-preflight",
+        help="select one safe Deployment Pod for a future disposable-kind fault test",
+    )
+    podkill_preflight.add_argument("--context", required=True)
+    podkill_preflight.add_argument("--namespace", default="default")
+    podkill_preflight.add_argument("--deployment", required=True)
+    podkill_preflight.add_argument("--container", required=True)
     campaign_plan = subcommands.add_parser(
         "benchmark-campaign-plan",
         help="preregister a balanced randomized schedule of repeated benchmark pairs",
@@ -378,6 +387,9 @@ def main(argv: list[str] | None = None) -> None:
         return
     if args.command == "benchmark-change-pair":
         _run_benchmark_change_pair(args)
+        return
+    if args.command == "podkill-preflight":
+        _run_podkill_preflight(args)
         return
     if args.command == "benchmark-campaign-plan":
         _run_benchmark_campaign_plan(args)
@@ -829,6 +841,21 @@ def _run_benchmark_change_pair(args: argparse.Namespace) -> None:
     print(json.dumps(output, indent=2, sort_keys=True))
     if assessment.status != "pass":
         raise SystemExit(2)
+
+
+def _run_podkill_preflight(args: argparse.Namespace) -> None:
+    try:
+        inspector = KubectlPodKillPreflight(args.context)
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
+    result = inspector.inspect(
+        ManifestTarget(
+            namespace=args.namespace,
+            deployment=args.deployment,
+            container=args.container,
+        )
+    )
+    print(result.model_dump_json(indent=2))
 
 
 def _run_benchmark_campaign_plan(args: argparse.Namespace) -> None:
