@@ -711,6 +711,63 @@ def test_benchmark_change_rejects_non_kind_context() -> None:
         )
 
 
+@pytest.mark.parametrize(
+    ("status", "persisted", "exit_code"),
+    [("pass", True, None), ("fail", True, 2), ("invalid", False, 2)],
+)
+def test_benchmark_change_pair_preserves_fail_but_not_invalid(
+    status: str,
+    persisted: bool,
+    exit_code: int | None,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    writes: list[tuple[Path, Path, Path]] = []
+    assessment = SimpleNamespace(
+        status=status,
+        model_dump_json=lambda **_: json.dumps({"status": status}),
+        model_dump=lambda **_: {"status": status, "assessment_id": "pair-id"},
+    )
+    monkeypatch.setattr(
+        cli_module,
+        "assess_change_performance_pair",
+        lambda first, second: assessment,
+    )
+
+    def write(output, first, second):
+        writes.append((output, first, second))
+        return SimpleNamespace(
+            path=output / "change-performance-pair-abc",
+            reused=False,
+            files=["pair.json"],
+        )
+
+    monkeypatch.setattr(cli_module, "write_change_performance_pair", write)
+    arguments = [
+        "benchmark-change-pair",
+        "--first",
+        "results/first",
+        "--second",
+        "results/second",
+        "--output-dir",
+        "pairs",
+    ]
+
+    if exit_code is None:
+        cli_module.main(arguments)
+    else:
+        with pytest.raises(SystemExit) as raised:
+            cli_module.main(arguments)
+        assert raised.value.code == exit_code
+
+    assert bool(writes) is persisted
+    if persisted:
+        assert writes == [
+            (Path("pairs"), Path("results/first"), Path("results/second"))
+        ]
+    assert json.loads(capsys.readouterr().out)["status"] == status
+
+
 def test_benchmark_campaign_plan_reads_seed_file_and_prints_frozen_schedule(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

@@ -60,6 +60,7 @@ from safety import (
     ChangeExecutionError,
     DeploymentChangeError,
     SubprocessChangeK6Executor,
+    assess_change_performance_pair,
     execute_change_bundle,
     execute_change_performance,
     inspect_deployment_change,
@@ -68,6 +69,7 @@ from safety import (
     validate_proposal_change,
     write_change_bundle,
     write_change_performance_artifact,
+    write_change_performance_pair,
 )
 
 
@@ -260,6 +262,15 @@ def build_parser() -> argparse.ArgumentParser:
         default="before-after",
         help="measurement order; produce both orders before a counterbalanced decision",
     )
+    benchmark_change_pair = subcommands.add_parser(
+        "benchmark-change-pair",
+        help="assess and persist two opposite-order generic performance results",
+    )
+    benchmark_change_pair.add_argument("--first", required=True, type=Path)
+    benchmark_change_pair.add_argument("--second", required=True, type=Path)
+    benchmark_change_pair.add_argument(
+        "--output-dir", type=Path, default=Path(".kubefit/change-performance-pairs")
+    )
     campaign_plan = subcommands.add_parser(
         "benchmark-campaign-plan",
         help="preregister a balanced randomized schedule of repeated benchmark pairs",
@@ -364,6 +375,9 @@ def main(argv: list[str] | None = None) -> None:
         return
     if args.command == "benchmark-change":
         _run_benchmark_change(args)
+        return
+    if args.command == "benchmark-change-pair":
+        _run_benchmark_change_pair(args)
         return
     if args.command == "benchmark-campaign-plan":
         _run_benchmark_campaign_plan(args)
@@ -791,6 +805,29 @@ def _run_benchmark_change(args: argparse.Namespace) -> None:
         )
     )
     if artifact.status != "pass":
+        raise SystemExit(2)
+
+
+def _run_benchmark_change_pair(args: argparse.Namespace) -> None:
+    assessment = assess_change_performance_pair(args.first, args.second)
+    if assessment.status == "invalid":
+        print(assessment.model_dump_json(indent=2))
+        raise SystemExit(2)
+    artifact = write_change_performance_pair(
+        args.output_dir,
+        args.first,
+        args.second,
+    )
+    output = assessment.model_dump(mode="json")
+    output.update(
+        {
+            "path": str(artifact.path),
+            "reused": artifact.reused,
+            "files": artifact.files,
+        }
+    )
+    print(json.dumps(output, indent=2, sort_keys=True))
+    if assessment.status != "pass":
         raise SystemExit(2)
 
 
