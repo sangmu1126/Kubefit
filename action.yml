@@ -1,0 +1,40 @@
+name: KubeFit Kubernetes change safety gate
+description: Bind exact resource proposal manifests to counterbalanced benchmark evidence
+author: KubeFit contributors
+
+inputs:
+  proposal:
+    description: Path to the immutable KubeFit proposal directory
+    required: true
+  base:
+    description: Path to the base Deployment manifest
+    required: true
+  candidate:
+    description: Path to the candidate Deployment manifest
+    required: true
+  first-result:
+    description: Path to the first immutable benchmark result
+    required: true
+  second-result:
+    description: Path to the opposite-order immutable benchmark result
+    required: true
+
+runs:
+  using: docker
+  image: Dockerfile.action
+  args:
+    - validate
+    - --proposal
+    - ${{ inputs.proposal }}
+    - --base
+    - ${{ inputs.base }}
+    - --candidate
+    - ${{ inputs.candidate }}
+    - --first
+    - ${{ inputs.first-result }}
+    - --second
+    - ${{ inputs.second-result }}
+
+branding:
+  icon: check-circle
+  color: blue
