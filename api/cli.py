@@ -1,5 +1,6 @@
 import argparse
 import json
+import math
 import os
 import re
 from datetime import timedelta
@@ -60,6 +61,7 @@ from safety import (
     ChangeExecutionError,
     DeploymentChangeError,
     KubectlPodKillPreflight,
+    PodKillExperimentRunner,
     SubprocessChangeK6Executor,
     assess_change_performance_pair,
     execute_change_bundle,
@@ -67,10 +69,12 @@ from safety import (
     inspect_deployment_change,
     load_change_bundle,
     render_validation_summary,
+    validate_podkill_prerequisites,
     validate_proposal_change,
     write_change_bundle,
     write_change_performance_artifact,
     write_change_performance_pair,
+    write_podkill_artifact,
 )
 
 
@@ -91,6 +95,16 @@ def _positive_int(value: str) -> int:
         raise argparse.ArgumentTypeError("must be an integer") from exc
     if parsed <= 0:
         raise argparse.ArgumentTypeError("must be a positive integer")
+    return parsed
+
+
+def _positive_float(value: str) -> float:
+    try:
+        parsed = float(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("must be a number") from exc
+    if not math.isfinite(parsed) or parsed <= 0:
+        raise argparse.ArgumentTypeError("must be a positive finite number")
     return parsed
 
 
@@ -280,6 +294,43 @@ def build_parser() -> argparse.ArgumentParser:
     podkill_preflight.add_argument("--namespace", default="default")
     podkill_preflight.add_argument("--deployment", required=True)
     podkill_preflight.add_argument("--container", required=True)
+    podkill_run = subcommands.add_parser(
+        "podkill-run",
+        help="delete one approved kind Pod and persist bounded recovery evidence",
+    )
+    podkill_run.add_argument("--change", required=True, type=Path)
+    podkill_run.add_argument("--performance-pair", required=True, type=Path)
+    podkill_run.add_argument("--target-url", required=True)
+    podkill_run.add_argument("--context", required=True)
+    podkill_run.add_argument("--container", required=True)
+    podkill_run.add_argument(
+        "--confirm-disposable-cluster",
+        required=True,
+        action="store_true",
+        help="acknowledge that the target is a disposable kind cluster",
+    )
+    podkill_run.add_argument(
+        "--confirm-pod-deletion",
+        required=True,
+        action="store_true",
+        help="acknowledge that one exact eligible Pod will be deleted",
+    )
+    podkill_run.add_argument(
+        "--results-dir", type=Path, default=Path(".kubefit/podkill-results")
+    )
+    podkill_run.add_argument(
+        "--lock-dir", type=Path, default=Path(".kubefit/benchmark-locks")
+    )
+    podkill_run.add_argument("--timeout-seconds", type=_positive_float, default=120)
+    podkill_run.add_argument(
+        "--probe-interval-seconds", type=_positive_float, default=0.5
+    )
+    podkill_run.add_argument(
+        "--probe-timeout-seconds", type=_positive_float, default=2
+    )
+    podkill_run.add_argument(
+        "--required-consecutive-successes", type=_positive_int, default=3
+    )
     campaign_plan = subcommands.add_parser(
         "benchmark-campaign-plan",
         help="preregister a balanced randomized schedule of repeated benchmark pairs",
@@ -390,6 +441,9 @@ def main(argv: list[str] | None = None) -> None:
         return
     if args.command == "podkill-preflight":
         _run_podkill_preflight(args)
+        return
+    if args.command == "podkill-run":
+        _run_podkill(args)
         return
     if args.command == "benchmark-campaign-plan":
         _run_benchmark_campaign_plan(args)
@@ -856,6 +910,69 @@ def _run_podkill_preflight(args: argparse.Namespace) -> None:
         )
     )
     print(result.model_dump_json(indent=2))
+
+
+def _run_podkill(args: argparse.Namespace) -> None:
+    if not args.context.startswith("kind-"):
+        raise SystemExit("PodKill is restricted to an explicit kind-* context")
+    change = load_change_bundle(args.change)
+    target = ManifestTarget(
+        namespace=change.change.namespace,
+        deployment=change.change.deployment,
+        container=args.container,
+    )
+    try:
+        validate_podkill_prerequisites(args.change, args.performance_pair, target)
+        inspector = KubectlPodKillPreflight(args.context)
+        runner = PodKillExperimentRunner(
+            args.context,
+            inspector=inspector,
+            timeout_seconds=args.timeout_seconds,
+            probe_interval_seconds=args.probe_interval_seconds,
+            probe_timeout_seconds=args.probe_timeout_seconds,
+            required_consecutive_successes=args.required_consecutive_successes,
+        )
+        with BenchmarkExecutionLock(
+            root=args.lock_dir,
+            context=args.context,
+            namespace=target.namespace,
+            deployment=target.deployment,
+        ):
+            validate_podkill_prerequisites(
+                args.change, args.performance_pair, target
+            )
+            approved = inspector.inspect(target)
+            result = runner.run(approved, args.target_url)
+            artifact = write_podkill_artifact(
+                args.results_dir,
+                args.change,
+                args.performance_pair,
+                result,
+            )
+    except (RuntimeError, ValueError) as exc:
+        raise SystemExit(str(exc)) from exc
+    print(
+        json.dumps(
+            {
+                "artifact_id": artifact.artifact_id,
+                "change_id": artifact.change_id,
+                "performance_pair_id": artifact.performance_pair_id,
+                "path": str(artifact.path),
+                "status": artifact.status,
+                "reused": artifact.reused,
+                "deleted_pod_uid": result.deleted.pod_uid,
+                "replacement_pod_uid": (
+                    result.replacement.pod_uid if result.replacement else None
+                ),
+                "service_recovery_seconds": result.service_recovery_seconds,
+                "replacement_ready_seconds": result.replacement_ready_seconds,
+            },
+            indent=2,
+            sort_keys=True,
+        )
+    )
+    if artifact.status != "pass":
+        raise SystemExit(2)
 
 
 def _run_benchmark_campaign_plan(args: argparse.Namespace) -> None:

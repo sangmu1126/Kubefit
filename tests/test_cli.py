@@ -827,6 +827,166 @@ def test_podkill_preflight_rejects_non_kind_context() -> None:
         )
 
 
+@pytest.mark.parametrize(("status", "exit_code"), [("pass", None), ("fail", 2)])
+def test_podkill_run_binds_prerequisites_locks_and_persists_result(
+    status: str,
+    exit_code: int | None,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    events: list[object] = []
+    target_change = SimpleNamespace(
+        change=SimpleNamespace(namespace="demo", deployment="api")
+    )
+    approved = SimpleNamespace(selected=SimpleNamespace(pod_uid="old-uid"))
+    result = SimpleNamespace(
+        status=status,
+        deleted=SimpleNamespace(pod_uid="old-uid"),
+        replacement=(
+            SimpleNamespace(pod_uid="replacement-uid") if status == "pass" else None
+        ),
+        service_recovery_seconds=1.0 if status == "pass" else None,
+        replacement_ready_seconds=2.0 if status == "pass" else None,
+    )
+
+    class Inspector:
+        def __init__(self, context: str) -> None:
+            events.append(("inspector", context))
+
+        def inspect(self, target):
+            events.append(("inspect", target))
+            return approved
+
+    class Runner:
+        def __init__(self, context: str, **kwargs) -> None:
+            events.append(("runner", context, kwargs))
+
+        def run(self, selected, url):
+            events.append(("run", selected, url))
+            return result
+
+    class Lock:
+        def __init__(self, **kwargs) -> None:
+            events.append(("lock", kwargs))
+
+        def __enter__(self):
+            events.append("lock-enter")
+
+        def __exit__(self, *args):
+            events.append("lock-exit")
+
+    monkeypatch.setattr(cli_module, "load_change_bundle", lambda path: target_change)
+    monkeypatch.setattr(cli_module, "KubectlPodKillPreflight", Inspector)
+    monkeypatch.setattr(cli_module, "PodKillExperimentRunner", Runner)
+    monkeypatch.setattr(cli_module, "BenchmarkExecutionLock", Lock)
+    monkeypatch.setattr(
+        cli_module,
+        "validate_podkill_prerequisites",
+        lambda change, pair, target: events.append(("validate", change, pair, target)),
+    )
+
+    def persist(output, change, pair, measured):
+        events.append(("persist", output, change, pair, measured))
+        return SimpleNamespace(
+            artifact_id="podkill-" + "a" * 32,
+            change_id="change-" + "b" * 32,
+            performance_pair_id="change-performance-pair-" + "c" * 32,
+            path=output / ("podkill-" + "a" * 32),
+            status=status,
+            reused=False,
+        )
+
+    monkeypatch.setattr(cli_module, "write_podkill_artifact", persist)
+    arguments = [
+        "podkill-run",
+        "--change",
+        "changes/change-abc",
+        "--performance-pair",
+        "pairs/pair-abc",
+        "--target-url",
+        "http://127.0.0.1:8080",
+        "--context",
+        "kind-kubefit",
+        "--container",
+        "api",
+        "--confirm-disposable-cluster",
+        "--confirm-pod-deletion",
+        "--results-dir",
+        "podkills",
+        "--lock-dir",
+        "locks",
+    ]
+
+    if exit_code is None:
+        cli_module.main(arguments)
+    else:
+        with pytest.raises(SystemExit) as raised:
+            cli_module.main(arguments)
+        assert raised.value.code == exit_code
+
+    assert [event[0] for event in events if isinstance(event, tuple)].count(
+        "validate"
+    ) == 2
+    assert events.index("lock-enter") < next(
+        index
+        for index, event in enumerate(events)
+        if isinstance(event, tuple) and event[0] == "run"
+    )
+    assert events[-1] == "lock-exit"
+    output = json.loads(capsys.readouterr().out)
+    assert output["status"] == status
+    assert output["deleted_pod_uid"] == "old-uid"
+
+
+def test_podkill_run_rejects_non_kind_before_reading_artifacts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        cli_module,
+        "load_change_bundle",
+        lambda path: pytest.fail("must reject before reading artifacts"),
+    )
+
+    with pytest.raises(SystemExit, match=r"kind-\*"):
+        cli_module.main(
+            [
+                "podkill-run",
+                "--change",
+                "change",
+                "--performance-pair",
+                "pair",
+                "--target-url",
+                "http://127.0.0.1:8080",
+                "--context",
+                "production",
+                "--container",
+                "api",
+                "--confirm-disposable-cluster",
+                "--confirm-pod-deletion",
+            ]
+        )
+
+
+def test_podkill_run_requires_explicit_deletion_confirmation() -> None:
+    with pytest.raises(SystemExit):
+        build_parser().parse_args(
+            [
+                "podkill-run",
+                "--change",
+                "change",
+                "--performance-pair",
+                "pair",
+                "--target-url",
+                "http://127.0.0.1:8080",
+                "--context",
+                "kind-kubefit",
+                "--container",
+                "api",
+                "--confirm-disposable-cluster",
+            ]
+        )
+
+
 def test_benchmark_campaign_plan_reads_seed_file_and_prints_frozen_schedule(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
