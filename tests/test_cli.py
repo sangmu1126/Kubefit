@@ -987,6 +987,68 @@ def test_podkill_run_requires_explicit_deletion_confirmation() -> None:
         )
 
 
+def test_podkill_campaign_plan_persists_explicit_policy(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    calls: list[object] = []
+    artifact = SimpleNamespace(
+        path=Path("campaigns/podkill-campaign-abc"), reused=False
+    )
+    plan = SimpleNamespace(
+        model_dump=lambda *, mode: {
+            "campaign_id": "podkill-campaign-" + "a" * 32,
+            "planned_trials": 5,
+            "allowed_failed_trials": 1,
+            "service_recovery_limit_seconds": 3.0,
+            "replacement_ready_limit_seconds": 30.0,
+        }
+    )
+    monkeypatch.setattr(
+        cli_module,
+        "write_podkill_campaign_plan",
+        lambda *args: calls.append(args) or artifact,
+    )
+    monkeypatch.setattr(
+        cli_module, "load_podkill_campaign_plan", lambda path: plan
+    )
+
+    cli_module.main(
+        [
+            "podkill-campaign-plan",
+            "--change",
+            "change",
+            "--performance-pair",
+            "pair",
+            "--planned-trials",
+            "5",
+            "--allowed-failed-trials",
+            "1",
+            "--service-recovery-limit-seconds",
+            "3",
+            "--replacement-ready-limit-seconds",
+            "30",
+            "--output-dir",
+            "campaigns",
+        ]
+    )
+
+    assert calls == [
+        (
+            Path("campaigns"),
+            Path("change"),
+            Path("pair"),
+            5,
+            1,
+            3.0,
+            30.0,
+        )
+    ]
+    output = json.loads(capsys.readouterr().out)
+    assert output["planned_trials"] == 5
+    assert output["path"] == "campaigns/podkill-campaign-abc"
+
+
 def test_benchmark_campaign_plan_reads_seed_file_and_prints_frozen_schedule(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

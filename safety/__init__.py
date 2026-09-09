@@ -82,6 +82,14 @@ from safety.podkill_artifact import (
     validate_podkill_prerequisites,
     write_podkill_artifact,
 )
+from safety.podkill_campaign import (
+    PodKillCampaignArtifact,
+    PodKillCampaignError,
+    PodKillCampaignPlan,
+    create_podkill_campaign_plan,
+    load_podkill_campaign_plan,
+    write_podkill_campaign_plan,
+)
 from safety.podkill_runner import (
     HttpProbeObservation,
     PodKillExperimentError,
@@ -137,6 +145,9 @@ __all__ = [
     "KubectlPodKillPreflight",
     "PodKillArtifact",
     "PodKillArtifactError",
+    "PodKillCampaignArtifact",
+    "PodKillCampaignError",
+    "PodKillCampaignPlan",
     "PodKillCandidate",
     "PodKillExperimentError",
     "PodKillExperimentResult",
@@ -153,6 +164,7 @@ __all__ = [
     "assess_change_performance_pair",
     "assess_loaded_change_performance_pair",
     "compare_change_performance",
+    "create_podkill_campaign_plan",
     "change_measurement_order",
     "execute_change_performance",
     "inspect_deployment_change",
@@ -161,6 +173,7 @@ __all__ = [
     "load_change_performance_artifact",
     "load_change_performance_pair",
     "load_podkill_artifact",
+    "load_podkill_campaign_plan",
     "render_validation_summary",
     "validate_proposal_change",
     "validate_podkill_prerequisites",
@@ -168,4 +181,5 @@ __all__ = [
     "write_change_performance_artifact",
     "write_change_performance_pair",
     "write_podkill_artifact",
+    "write_podkill_campaign_plan",
 ]

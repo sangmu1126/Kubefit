@@ -68,6 +68,7 @@ from safety import (
     execute_change_performance,
     inspect_deployment_change,
     load_change_bundle,
+    load_podkill_campaign_plan,
     render_validation_summary,
     validate_podkill_prerequisites,
     validate_proposal_change,
@@ -75,6 +76,7 @@ from safety import (
     write_change_performance_artifact,
     write_change_performance_pair,
     write_podkill_artifact,
+    write_podkill_campaign_plan,
 )
 
 
@@ -105,6 +107,16 @@ def _positive_float(value: str) -> float:
         raise argparse.ArgumentTypeError("must be a number") from exc
     if not math.isfinite(parsed) or parsed <= 0:
         raise argparse.ArgumentTypeError("must be a positive finite number")
+    return parsed
+
+
+def _non_negative_int(value: str) -> int:
+    try:
+        parsed = int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("must be an integer") from exc
+    if parsed < 0:
+        raise argparse.ArgumentTypeError("must be a non-negative integer")
     return parsed
 
 
@@ -331,6 +343,25 @@ def build_parser() -> argparse.ArgumentParser:
     podkill_run.add_argument(
         "--required-consecutive-successes", type=_positive_int, default=3
     )
+    podkill_campaign = subcommands.add_parser(
+        "podkill-campaign-plan",
+        help="preregister repeated PodKill count, stopping rule, and recovery limits",
+    )
+    podkill_campaign.add_argument("--change", required=True, type=Path)
+    podkill_campaign.add_argument("--performance-pair", required=True, type=Path)
+    podkill_campaign.add_argument("--planned-trials", required=True, type=_positive_int)
+    podkill_campaign.add_argument(
+        "--allowed-failed-trials", type=_non_negative_int, default=0
+    )
+    podkill_campaign.add_argument(
+        "--service-recovery-limit-seconds", required=True, type=_positive_float
+    )
+    podkill_campaign.add_argument(
+        "--replacement-ready-limit-seconds", required=True, type=_positive_float
+    )
+    podkill_campaign.add_argument(
+        "--output-dir", type=Path, default=Path(".kubefit/podkill-campaigns")
+    )
     campaign_plan = subcommands.add_parser(
         "benchmark-campaign-plan",
         help="preregister a balanced randomized schedule of repeated benchmark pairs",
@@ -444,6 +475,9 @@ def main(argv: list[str] | None = None) -> None:
         return
     if args.command == "podkill-run":
         _run_podkill(args)
+        return
+    if args.command == "podkill-campaign-plan":
+        _run_podkill_campaign_plan(args)
         return
     if args.command == "benchmark-campaign-plan":
         _run_benchmark_campaign_plan(args)
@@ -973,6 +1007,33 @@ def _run_podkill(args: argparse.Namespace) -> None:
     )
     if artifact.status != "pass":
         raise SystemExit(2)
+
+
+def _run_podkill_campaign_plan(args: argparse.Namespace) -> None:
+    try:
+        artifact = write_podkill_campaign_plan(
+            args.output_dir,
+            args.change,
+            args.performance_pair,
+            args.planned_trials,
+            args.allowed_failed_trials,
+            args.service_recovery_limit_seconds,
+            args.replacement_ready_limit_seconds,
+        )
+        plan = load_podkill_campaign_plan(artifact.path)
+    except RuntimeError as exc:
+        raise SystemExit(str(exc)) from exc
+    print(
+        json.dumps(
+            {
+                **plan.model_dump(mode="json"),
+                "path": str(artifact.path),
+                "reused": artifact.reused,
+            },
+            indent=2,
+            sort_keys=True,
+        )
+    )
 
 
 def _run_benchmark_campaign_plan(args: argparse.Namespace) -> None:
