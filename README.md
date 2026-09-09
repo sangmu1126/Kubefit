@@ -502,10 +502,20 @@ restoration and publishes a content-addressed `change-performance-<digest>` resu
 replayable verdict is deliberately limited to fixed-load completeness, latency, error
 rate, and recovery time; it makes no cost, throttling, OOM, or fault claim.
 
+Start a rollout-safe Kubernetes API proxy before either order. A Service port-forward
+can remain attached to a Pod that the benchmark replaces and must not be used here.
+
+```bash
+kubectl --context kind-kubefit proxy \
+  --port=8001 \
+  --address=127.0.0.1 \
+  --accept-hosts='^127\.0\.0\.1$'
+```
+
 ```bash
 kubefit benchmark-change \
   --change .kubefit/changes/change-<digest> \
-  --target-url http://127.0.0.1:8080 \
+  --target-url http://127.0.0.1:8001/api/v1/namespaces/kubefit-demo/services/http:overprovisioned-api:80/proxy/ \
   --context kind-kubefit \
   --container api \
   --confirm-disposable-cluster \
@@ -513,9 +523,10 @@ kubefit benchmark-change \
 ```
 
 Both complete load phases take roughly six minutes in total before rollout time. FAIL
-and INVALID results are retained before the command exits with code 2. The current
-source contract is locally unit-tested but has not run this new generic path against a
-live cluster yet.
+and INVALID results are retained before the command exits with code 2. The generic path
+has run against local kind: one 2026-09-10 counterbalanced Pair conservatively failed
+because different low-latency percentile checks failed in opposite orders. No PodKill
+was allowed from that Pair.
 
 Run a second independent trial with `--execution-order after-before` to collect the
 opposite order. Each artifact records and revalidates its order from measurement
@@ -557,7 +568,7 @@ kubefit podkill-run \
   --change .kubefit/changes/change-<digest> \
   --performance-pair \
     .kubefit/change-performance-pairs/change-performance-pair-<digest> \
-  --target-url http://127.0.0.1:8080 \
+  --target-url http://127.0.0.1:8001/api/v1/namespaces/kubefit-demo/services/http:overprovisioned-api:80/proxy/ \
   --context kind-kubefit \
   --container api \
   --confirm-disposable-cluster \

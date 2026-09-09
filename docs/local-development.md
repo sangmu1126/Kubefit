@@ -500,10 +500,20 @@ hashes. The internal generic performance runner applies and measures base, appli
 measures candidate, then restores base before returning a replayable latency/error/load/
 recovery verdict. Run and persist that contract with:
 
+Keep a Kubernetes API proxy running in another terminal. Do not use a Service
+port-forward for a benchmark that replaces its backing Pods:
+
+```bash
+kubectl --context kind-kubefit proxy \
+  --port=8001 \
+  --address=127.0.0.1 \
+  --accept-hosts='^127\.0\.0\.1$'
+```
+
 ```bash
 kubefit benchmark-change \
   --change .kubefit/changes/change-<digest> \
-  --target-url http://127.0.0.1:8080 \
+  --target-url http://127.0.0.1:8001/api/v1/namespaces/kubefit-demo/services/http:overprovisioned-api:80/proxy/ \
   --context kind-kubefit \
   --container api \
   --confirm-disposable-cluster \
@@ -522,7 +532,7 @@ Collect the opposite order as a separate restored artifact:
 ```bash
 kubefit benchmark-change \
   --change .kubefit/changes/change-<digest> \
-  --target-url http://127.0.0.1:8080 \
+  --target-url http://127.0.0.1:8001/api/v1/namespaces/kubefit-demo/services/http:overprovisioned-api:80/proxy/ \
   --context kind-kubefit \
   --container api \
   --confirm-disposable-cluster \
@@ -567,15 +577,13 @@ Deployment UID and one of its ReplicaSet UIDs. The oldest verified Pod is select
 the rule is deterministic. No delete, HTTP probe, recovery verdict, or artifact is
 created at this stage.
 
-The internal `PodKillExperimentRunner` is intentionally not connected to this command
-yet. It re-runs the full preflight and requires the Deployment identity, generation,
-eligible Pod UID set, and deterministic selection to remain identical before issuing
-one exact-name deletion with a one-second grace period. It then samples the service from
-the host and waits for exactly one new ready Pod UID. PASS requires both a configurable
-consecutive HTTP-success streak and replacement readiness before the bounded timeout.
-The result recomputes service recovery from its samples. Until an immutable artifact and
-explicit mutation acknowledgement are added, this internal runner is not a supported
-operator workflow.
+Only a matching PASS performance Pair can proceed to `kubefit podkill-run`. The command
+requires separate disposable-cluster and Pod-deletion acknowledgements, re-runs the full
+preflight, deletes one exact Pod name, and persists PASS or timeout FAIL evidence. Use
+the same API Service proxy URL shown above so the HTTP probe survives Pod replacement.
+Repeated experiments must first be frozen with `kubefit podkill-campaign-plan`; after
+all trials, `kubefit podkill-campaign-check` retains a self-contained PASS or FAIL
+campaign. See the main README for the complete commands and limitations.
 
 If an aggressive candidate fails, keep that immutable result and do not repeat the
 same trial until it passes. A documented workload-specific CPU floor can be raised

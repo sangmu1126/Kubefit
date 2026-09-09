@@ -114,6 +114,7 @@ evidence of engineering judgment than a final screenshot without context.
 | [0090](0090-controlled-podkill-evidence.md) | Controlled PodKill evidence | Require passing change evidence, run one acknowledged fault, and persist PASS or FAIL |
 | [0091](0091-preregistered-podkill-campaign.md) | Preregistered PodKill campaign | Freeze repeated-trial count, stopping rule, failure budget, and recovery limits before faults |
 | [0092](0092-replayable-podkill-campaign-evidence.md) | Replayable PodKill campaign evidence | Reject selected or mixed trials and retain complete PASS or FAIL campaigns with descriptive recovery summaries |
+| [0093](0093-live-generic-gate-rejection.md) | Live generic gate rejection | Preserve a rollout-path failure, complete both valid orders, and block PodKill on a failed Pair |
 
 ## Visual language
 
