@@ -115,6 +115,10 @@ evidence of engineering judgment than a final screenshot without context.
 | [0091](0091-preregistered-podkill-campaign.md) | Preregistered PodKill campaign | Freeze repeated-trial count, stopping rule, failure budget, and recovery limits before faults |
 | [0092](0092-replayable-podkill-campaign-evidence.md) | Replayable PodKill campaign evidence | Reject selected or mixed trials and retain complete PASS or FAIL campaigns with descriptive recovery summaries |
 | [0093](0093-live-generic-gate-rejection.md) | Live generic gate rejection | Preserve a rollout-path failure, complete both valid orders, and block PodKill on a failed Pair |
+| [0094](0094-eks-read-only-pilot.md) | EKS read-only pilot boundary | Document a scoped existing-cluster path without conflating kind tests and EKS evidence |
+| [0095](0095-declared-observation-source.md) | Declared observation source | Retain operator-declared labels and display all supplied cost-rate assumptions |
+| [0096](0096-pod-uid-source-guard.md) | Current-Pod UID source guard | Refuse analysis when Kubernetes and Prometheus identify different current Pods |
+| [0097](0097-eks-validation-decision-gate.md) | EKS validation decision gate | Require a cost, time, and teardown boundary before any cloud experiment |
 
 ## Visual language
 

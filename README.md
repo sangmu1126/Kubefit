@@ -325,6 +325,8 @@ tests/           Unit and integration contracts
 Useful references:
 
 - [Local development and full command reference](docs/local-development.md)
+- [EKS read-only pilot runbook](docs/eks-pilot.md)
+- [EKS validation decision gate](docs/eks-validation-plan.md)
 - [Architecture](docs/architecture.md)
 - [Implementation history](docs/devlog/README.md)
 - [Helm chart guide](deploy/helm/kubefit/README.md)
