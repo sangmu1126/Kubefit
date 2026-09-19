@@ -29,6 +29,22 @@ The last command must say `No changes`. `terraform init` downloads public
 modules/providers, not AWS infrastructure. The committed lock file pins the
 provider versions; `.terraform/`, `*.tfvars`, and local state are ignored.
 
+For one fail-closed local check of the default Terraform plan and rendered
+monitoring topology, run this from the repository root after `terraform init`
+and `helm repo add prometheus-community ...`:
+
+```sh
+.venv/bin/python -m safety.eks_pilot_preflight
+```
+
+The [preflight](../../safety/eks_pilot_preflight.py) refuses Terraform variable
+overrides, auto-loaded tfvars, a non-default workspace, or an existing local
+state. It requires a zero-change default plan and rejects a rendered PVC,
+Ingress, external Service, missing cAdvisor/kube-state-metrics monitor, or
+non-ephemeral Prometheus storage. It performs no AWS or Kubernetes writes. A
+PASS is **not** permission to enable the experiment, and it cannot verify AWS
+inventory, live scrape targets, capacity, rates, or teardown.
+
 Before a non-default plan, complete the [decision gate](../../docs/eks-validation-plan.md):
 explicit charge approval, exact account and Region, current rate sheet,
 approved total budget and wall-clock deadline, assigned cleanup owner, current

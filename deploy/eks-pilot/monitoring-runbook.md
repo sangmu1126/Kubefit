@@ -38,6 +38,9 @@ helm template monitoring prometheus-community/kube-prometheus-stack \
 
 Re-render with the exact chart and Kubernetes versions selected in the approved
 plan. A successful local render does not prove that EKS scrape targets are UP.
+The repository's [local preflight](README.md) automates these rendered-manifest
+checks alongside the disabled Terraform plan; run it before considering a
+non-default plan.
 
 ## 2. Preflight the exact context
 
