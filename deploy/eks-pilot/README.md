@@ -60,4 +60,6 @@ No Helm release, Prometheus PVC, workload, or load generator is provisioned by
 this Terraform draft. Those must be separately planned and accounted for; the
 existing local Prometheus values use the kind `standard` StorageClass and are
 **not** EKS-ready. An ephemeral Prometheus deployment would lose metrics on
-restart, so a restarted observation window must start over.
+restart, so a restarted observation window must start over. The
+[monitoring runbook](monitoring-runbook.md) and [EKS-only values](prometheus-values.yaml)
+provide a reviewable, unexecuted observation path after separate approval.

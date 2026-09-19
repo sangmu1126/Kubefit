@@ -121,6 +121,7 @@ evidence of engineering judgment than a final screenshot without context.
 | [0097](0097-eks-validation-decision-gate.md) | EKS validation decision gate | Require a cost, time, and teardown boundary before any cloud experiment |
 | [0098](0098-seoul-eks-price-probe.md) | Seoul EKS price probe | Record a dated static-cost lower bound and variable-cost omissions without provisioning |
 | [0099](0099-disabled-eks-infrastructure-draft.md) | Disabled EKS infrastructure draft | Pin a reviewable VPC/EKS topology while keeping the default plan at zero resources |
+| [0100](0100-eks-ephemeral-observation-plan.md) | EKS ephemeral observation plan | Render an EKS-only emptyDir monitoring stack and define live checks without provisioning |
 
 ## Visual language
 
