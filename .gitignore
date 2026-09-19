@@ -19,6 +19,15 @@ benchmarks/campaign-evidence/
 .kube/
 .kubefit/
 
+# Local Terraform downloads, state, and operator-specific inputs
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.tfvars.json
+crash.log
+crash.*.log
+
 # Local contest submission drafts can contain team and contact information
 docs/submission/
 
