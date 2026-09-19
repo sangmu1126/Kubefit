@@ -120,6 +120,7 @@ evidence of engineering judgment than a final screenshot without context.
 | [0096](0096-pod-uid-source-guard.md) | Current-Pod UID source guard | Refuse analysis when Kubernetes and Prometheus identify different current Pods |
 | [0097](0097-eks-validation-decision-gate.md) | EKS validation decision gate | Require a cost, time, and teardown boundary before any cloud experiment |
 | [0098](0098-seoul-eks-price-probe.md) | Seoul EKS price probe | Record a dated static-cost lower bound and variable-cost omissions without provisioning |
+| [0099](0099-disabled-eks-infrastructure-draft.md) | Disabled EKS infrastructure draft | Pin a reviewable VPC/EKS topology while keeping the default plan at zero resources |
 
 ## Visual language
 

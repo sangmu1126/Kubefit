@@ -1,6 +1,9 @@
 # EKS validation decision gate
 
 **Status: planning only. No cluster is authorized for creation by this document.**
+The [disposable Terraform draft](../deploy/eks-pilot/README.md) is disabled by
+default and has no deployment authorization. It covers VPC and EKS only; the
+Prometheus/workload installation and teardown need a separate reviewed runbook.
 On 2026-09-19, the selected AWS account returned an empty EKS cluster list in
 `ap-northeast-2`. That observation says nothing about other Regions or accounts.
 
