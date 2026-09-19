@@ -58,7 +58,7 @@ variable "approved_budget_usd" {
 }
 
 variable "stop_at_utc" {
-  description = "Human cleanup deadline in RFC3339 UTC, for example 2026-09-19T10:00:00Z. No automatic deletion is implied."
+  description = "Human cleanup deadline in RFC3339 UTC, at most four hours after planning. No automatic deletion is implied."
   type        = string
   default     = ""
 }
@@ -85,8 +85,20 @@ resource "terraform_data" "approval_gate" {
       error_message = "operator_cidr must be one valid IPv4 /32 address."
     }
     precondition {
-      condition     = var.approved_budget_usd > 0 && var.owner_tag != "unapproved" && var.owner_tag != "" && can(timeadd(var.stop_at_utc, "0s"))
+      condition     = var.approved_budget_usd > 0 && var.owner_tag != "unapproved" && var.owner_tag != "" && can(regex("Z$", var.stop_at_utc)) && can(timeadd(var.stop_at_utc, "0s"))
       error_message = "Record a positive approved budget, named owner, and RFC3339 stop time before enabling."
+    }
+    precondition {
+      condition = try(
+        timecmp(var.stop_at_utc, plantimestamp()) > 0 &&
+        timecmp(var.stop_at_utc, timeadd(plantimestamp(), "4h")) <= 0,
+        false
+      )
+      error_message = "stop_at_utc must be in the future and no more than four hours after this plan."
+    }
+    precondition {
+      condition     = try(timecmp(var.stop_at_utc, timestamp()) > 0, false)
+      error_message = "stop_at_utc expired before apply; stop and make a new approved plan."
     }
   }
 }
