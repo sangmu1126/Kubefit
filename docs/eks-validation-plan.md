@@ -53,6 +53,44 @@ an additional alert, but its billing data is refreshed at least daily, so it can
 stop a short experiment in real time. Use the wall-clock stop and human cleanup as
 the primary control. [AWS Budgets update frequency](https://docs.aws.amazon.com/cost-management/latest/userguide/budgets-best-practices.html)
 
+### Dated candidate for a short Seoul compatibility pilot
+
+This is a **candidate for review, not approval to provision**. The local demo has
+two Pods requesting 1 vCPU and 2 GiB each. Two `m6i.large` workers (2 vCPU, 8 GiB
+each) are a plausible starting point for those Pods plus a small Prometheus stack,
+but actual allocatable capacity and scheduling must still be checked. The proposed
+network uses private workers and one NAT gateway; it does not create an external
+LoadBalancer. A temporary Prometheus data directory would avoid an EBS CSI/PVC
+dependency, but a Prometheus restart would invalidate the observation window.
+
+On 2026-09-19 the AWS Price List Query API returned the following **public
+on-demand** Seoul rates. The EKS and IPv4 rates come from the linked AWS pricing
+pages. Discounts, credits, taxes, and data transfer are not included.
+
+| Candidate component | Rate | Four-hour subtotal |
+|---|---:|---:|
+| One standard-support EKS cluster | $0.100/hour | $0.400 |
+| Two `m6i.large` Linux workers | 2 × $0.118/hour | $0.944 |
+| One NAT gateway | $0.059/hour | $0.236 |
+| One NAT public IPv4 address | $0.005/hour | $0.020 |
+| Two 20 GB gp3 node root volumes | 40 GB × $0.0912/GB-month ÷ 730 | ~$0.020 |
+| **Static subtotal** | **~$0.405/hour** | **~$1.620** |
+
+The estimate is a **lower bound**, not a cap: NAT processing is $0.059/GB in the
+queried Seoul price list, and cross-AZ/internet transfer, logs, extra volumes,
+image storage, and setup mistakes can add charges. NAT gateway partial hours are
+billed as full hours. Re-query rates and review the exact infrastructure plan before
+any create command. Sources: [EKS pricing](https://aws.amazon.com/eks/pricing/),
+[VPC/NAT/IPv4 pricing](https://aws.amazon.com/vpc/pricing/),
+[EBS pricing](https://aws.amazon.com/ebs/pricing/), and
+[AWS Price List Query API](https://docs.aws.amazon.com/awsaccountbilling/latest/aboutv2/using-price-list-query-api.html).
+
+The **four-hour window is only a proposed maximum**: provisioning and teardown use
+part of it, leaving roughly one controlled observation hour. If readiness remains
+ineligible, stop rather than extending the window automatically. A person must
+approve the maximum duration, overall budget, network layout, and cleanup owner
+before implementing or applying EKS infrastructure.
+
 ## Experiment and stop conditions
 
 1. Before any create command, record the approved plan, state location, start time,
