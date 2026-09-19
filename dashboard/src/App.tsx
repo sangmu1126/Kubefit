@@ -191,6 +191,12 @@ function ArtifactContext({ review }: { review: AnalysisReview }) {
         <p>
           container <strong>{review.target.container}</strong> · created {new Date(review.workload_created_at).toLocaleString("ko-KR")}
         </p>
+        {review.observation_source && (
+          <p>
+            관측 출처(운영자 선언): <strong>{review.observation_source.cluster_label}</strong>
+            {" · "}메트릭: {review.observation_source.metrics_source_label}
+          </p>
+        )}
       </div>
       <div className="artifact-verification">
         <span>무결성 검사 {review.checks.length}/{review.checks.length}</span>
@@ -273,6 +279,8 @@ function Results({ result, review }: { result: EvaluationResult; review: Analysi
         <summary>비용 추정의 전제와 한계</summary>
         <p>
           {result.cost.replica_count} replicas · {result.cost.assumptions.monthly_hours} hours · {result.cost.assumptions.price_source}
+          {" · "}CPU ${result.cost.assumptions.cpu_core_hour_usd}/core-hour
+          {" · "}memory ${result.cost.assumptions.memory_gib_hour_usd}/GiB-hour
         </p>
         <ul>{result.cost.caveats.map((item) => <li key={item}>{item}</li>)}</ul>
       </details>

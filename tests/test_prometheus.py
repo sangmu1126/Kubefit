@@ -10,6 +10,84 @@ def test_percentile_interpolates_samples() -> None:
     assert percentile([1, 2, 3, 4], 0.5) == 2.5
 
 
+def test_verifies_current_pod_uids_against_prometheus() -> None:
+    queries: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/api/v1/query"
+        queries.append(str(request.url.params["query"]))
+        return httpx.Response(
+            200,
+            json={
+                "status": "success",
+                "data": {
+                    "resultType": "vector",
+                    "result": [
+                        {
+                            "metric": {"namespace": "demo", "pod": "api-a", "uid": "uid-a"},
+                            "value": [1, "1"],
+                        },
+                        {
+                            "metric": {"namespace": "demo", "pod": "api-b", "uid": "uid-b"},
+                            "value": [1, "1"],
+                        },
+                    ],
+                },
+            },
+        )
+
+    http = httpx.Client(base_url="http://prometheus", transport=httpx.MockTransport(handler))
+    PrometheusClient("http://prometheus", client=http).verify_pod_uids(
+        "demo", {"api-a": "uid-a", "api-b": "uid-b"}
+    )
+
+    assert queries == ['kube_pod_info{namespace="demo",pod=~"(?:api-a|api-b)"}']
+
+
+@pytest.mark.parametrize(
+    ("result", "message"),
+    [
+        ([], "missing or differs"),
+        (
+            [{"metric": {"namespace": "demo", "pod": "api-a", "uid": "old"}, "value": [1, "1"]}],
+            "missing or differs",
+        ),
+        (
+            [
+                {
+                    "metric": {"namespace": "demo", "pod": "api-a", "uid": "uid-a"},
+                    "value": [1, "1"],
+                },
+                {"metric": {"namespace": "demo", "pod": "api-a", "uid": "old"}, "value": [1, "1"]},
+            ],
+            "missing or differs",
+        ),
+    ],
+)
+def test_rejects_missing_stale_or_conflicting_pod_identity(
+    result: list[dict[str, object]], message: str
+) -> None:
+    http = httpx.Client(
+        base_url="http://prometheus",
+        transport=httpx.MockTransport(
+            lambda request: httpx.Response(
+                200,
+                json={"status": "success", "data": {"resultType": "vector", "result": result}},
+            )
+        ),
+    )
+
+    with pytest.raises(PrometheusError, match=message):
+        PrometheusClient("http://prometheus", client=http).verify_pod_uids(
+            "demo", {"api-a": "uid-a"}
+        )
+
+
+def test_rejects_missing_kubernetes_pod_uid_without_query() -> None:
+    with pytest.raises(PrometheusError, match="Kubernetes did not return UIDs"):
+        PrometheusClient("http://prometheus").verify_pod_uids("demo", {"api-a": ""})
+
+
 def test_collects_benchmark_throttling_inside_aligned_window() -> None:
     requests: list[httpx.Request] = []
 
@@ -34,14 +112,10 @@ def test_collects_benchmark_throttling_inside_aligned_window() -> None:
             },
         )
 
-    http = httpx.Client(
-        base_url="http://prometheus", transport=httpx.MockTransport(handler)
-    )
+    http = httpx.Client(base_url="http://prometheus", transport=httpx.MockTransport(handler))
     start = datetime(2026, 8, 21, tzinfo=UTC)
 
-    result = PrometheusClient(
-        "http://prometheus", client=http
-    ).benchmark_cpu_throttling_p95(
+    result = PrometheusClient("http://prometheus", client=http).benchmark_cpu_throttling_p95(
         namespace="demo",
         pods=["api-a", "api-b"],
         container="api",
@@ -136,9 +210,7 @@ def test_collects_workload_percentiles_and_units() -> None:
             200,
             json={
                 "status": "success",
-                "data": {
-                    "result": [{"metric": {"pod": "api-abc"}, "values": values}]
-                },
+                "data": {"result": [{"metric": {"pod": "api-abc"}, "values": values}]},
             },
         )
 
@@ -267,9 +339,7 @@ def test_rejects_workload_creation_timestamp_in_the_future() -> None:
 
 def test_rejects_workload_when_prometheus_returns_no_samples() -> None:
     def handler(_: httpx.Request) -> httpx.Response:
-        return httpx.Response(
-            200, json={"status": "success", "data": {"result": []}}
-        )
+        return httpx.Response(200, json={"status": "success", "data": {"result": []}})
 
     http = httpx.Client(base_url="http://prometheus", transport=httpx.MockTransport(handler))
 
@@ -292,9 +362,7 @@ def test_marks_cpu_throttling_unavailable_without_losing_usage_metrics() -> None
             if "cfs_throttled" in query
             else [{"metric": {"pod": "api-current-pod"}, "values": [[1, "1"]]}]
         )
-        return httpx.Response(
-            200, json={"status": "success", "data": {"result": result}}
-        )
+        return httpx.Response(200, json={"status": "success", "data": {"result": result}})
 
     http = httpx.Client(base_url="http://prometheus", transport=httpx.MockTransport(handler))
     result = PrometheusClient("http://prometheus", client=http).workload_metrics(
@@ -323,8 +391,7 @@ def test_rejects_disjoint_cpu_and_memory_pod_identities() -> None:
                 "status": "success",
                 "data": {
                     "result": [
-                        {"metric": {"pod": pod}, "values": [[1, "1"], [2, "2"]]}
-                        for pod in pods
+                        {"metric": {"pod": pod}, "values": [[1, "1"], [2, "2"]]} for pod in pods
                     ]
                 },
             },

@@ -372,6 +372,11 @@ describe("KubeFit dashboard", () => {
         ...artifactReview,
         artifact_schema_version: 2,
         verification_level: "recommendation_replayed",
+        observation_source: {
+          verification: "operator_declared",
+          cluster_label: "eks-seoul-pilot",
+          metrics_source_label: "prometheus-pilot",
+        },
         checks: [
           ...artifactReview.checks,
           { code: "recommendation_replay", status: "pass", reason: "recommendation replayed" },
@@ -390,6 +395,8 @@ describe("KubeFit dashboard", () => {
 
     expect(await screen.findByText("RECOMMENDATION REPLAYED")).toBeInTheDocument();
     expect(screen.getByText("ANALYSIS ARTIFACT · SCHEMA 2")).toBeInTheDocument();
+    expect(screen.getByText("eks-seoul-pilot")).toBeInTheDocument();
+    expect(screen.getByText(/CPU \$0\.04\/core-hour/)).toBeInTheDocument();
   });
 
   it("rejects an oversized artifact before sending it", async () => {

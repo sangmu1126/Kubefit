@@ -2,7 +2,7 @@ import json
 import re
 import subprocess
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import ROUND_CEILING, Decimal, InvalidOperation
 
@@ -29,6 +29,7 @@ class DeploymentResources:
     oom_killed_count: int
     pod_runtime_statuses: tuple["PodContainerRuntimeStatus", ...]
     resources: CurrentResources
+    pod_uids: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -295,6 +296,10 @@ class KubectlDeploymentCollector:
                 memory_request_mib=parse_memory_mib(requests["memory"]),
                 memory_limit_mib=parse_memory_mib(limits["memory"]),
             ),
+            pod_uids={
+                item["metadata"]["name"]: item["metadata"].get("uid", "")
+                for item in pod_items
+            },
         )
 
 

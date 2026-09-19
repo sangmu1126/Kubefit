@@ -167,6 +167,22 @@ def test_review_analysis_v2_reports_replayed_recommendation() -> None:
     assert review["checks"][-1]["code"] == "recommendation_replay"
 
 
+def test_review_analysis_v2_preserves_declared_source() -> None:
+    artifact = replayable_analysis().model_dump(mode="json")
+    artifact["observation_source"] = {
+        "verification": "operator_declared",
+        "cluster_label": "eks-seoul-pilot",
+        "metrics_source_label": "prometheus-pilot",
+    }
+
+    response = client.post("/v1/analysis-reviews", json=artifact)
+
+    assert response.status_code == 200
+    review = response.json()
+    assert review["observation_source"] == artifact["observation_source"]
+    assert any("does not authenticate" in item for item in review["limitations"])
+
+
 def test_review_benchmark_returns_index_bound_replayed_verdict(tmp_path: Path) -> None:
     _, run = completed_run(tmp_path)
     published = write_benchmark_result(tmp_path / "results", run)

@@ -37,6 +37,7 @@ from evaluator import (
     AnalysisArtifact,
     AnalysisTarget,
     CostAssumptions,
+    ObservationSource,
     RecommendationPolicySnapshot,
     assess_observation_readiness,
     evaluate_resources,
@@ -135,6 +136,14 @@ def _git_remote_name(value: str) -> str:
     return value
 
 
+def _source_label(value: str) -> str:
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}", value):
+        raise argparse.ArgumentTypeError(
+            "must be a 1-64 character label using letters, digits, dots, underscores, or hyphens"
+        )
+    return value
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="kubefit")
     subcommands = parser.add_subparsers(dest="command", required=True)
@@ -144,14 +153,14 @@ def build_parser() -> argparse.ArgumentParser:
     analyze.add_argument("--memory-gib-hour-usd", required=True, type=_positive_decimal)
     analyze.add_argument("--monthly-hours", type=_positive_decimal, default=Decimal("730"))
     analyze.add_argument("--price-source", required=True)
+    analyze.add_argument("--cluster-label", type=_source_label)
+    analyze.add_argument("--metrics-source-label", type=_source_label)
     reanalyze = subcommands.add_parser(
         "reanalyze",
         help="derive a stricter analysis from retained replay inputs without recollection",
     )
     reanalyze.add_argument("--analysis", required=True, type=Path)
-    reanalyze.add_argument(
-        "--minimum-cpu-millicores", required=True, type=_positive_int
-    )
+    reanalyze.add_argument("--minimum-cpu-millicores", required=True, type=_positive_int)
     readiness = subcommands.add_parser(
         "readiness", help="explain whether observation evidence is proposal-ready"
     )
@@ -197,9 +206,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     benchmark_pair.add_argument("--first", required=True, type=Path)
     benchmark_pair.add_argument("--second", required=True, type=Path)
-    benchmark_pair.add_argument(
-        "--output-dir", type=Path, default=Path("benchmarks/pairs")
-    )
+    benchmark_pair.add_argument("--output-dir", type=Path, default=Path("benchmarks/pairs"))
     check = subcommands.add_parser(
         "check",
         help="enforce a counterbalanced benchmark pair as a CI safety gate",
@@ -237,9 +244,7 @@ def build_parser() -> argparse.ArgumentParser:
     prepare_change.add_argument("--candidate", required=True, type=Path)
     prepare_change.add_argument("--namespace", default="default")
     prepare_change.add_argument("--deployment", required=True)
-    prepare_change.add_argument(
-        "--output-dir", type=Path, default=Path(".kubefit/changes")
-    )
+    prepare_change.add_argument("--output-dir", type=Path, default=Path(".kubefit/changes"))
     execute_change = subcommands.add_parser(
         "execute-change",
         help="apply a change bundle on disposable kind and always restore its base",
@@ -271,20 +276,13 @@ def build_parser() -> argparse.ArgumentParser:
     benchmark_change.add_argument(
         "--results-dir", type=Path, default=Path(".kubefit/change-performance")
     )
-    benchmark_change.add_argument(
-        "--lock-dir", type=Path, default=Path(".kubefit/benchmark-locks")
-    )
+    benchmark_change.add_argument("--lock-dir", type=Path, default=Path(".kubefit/benchmark-locks"))
     benchmark_change.add_argument(
         "--k6-script",
         type=Path,
-        default=Path(__file__).resolve().parents[1]
-        / "benchmarks"
-        / "k6"
-        / "resource_profile.js",
+        default=Path(__file__).resolve().parents[1] / "benchmarks" / "k6" / "resource_profile.js",
     )
-    benchmark_change.add_argument(
-        "--rollout-timeout-seconds", type=_positive_int, default=120
-    )
+    benchmark_change.add_argument("--rollout-timeout-seconds", type=_positive_int, default=120)
     benchmark_change.add_argument("--k6-timeout-seconds", type=_positive_int, default=240)
     benchmark_change.add_argument(
         "--execution-order",
@@ -330,22 +328,12 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="acknowledge that one exact eligible Pod will be deleted",
     )
-    podkill_run.add_argument(
-        "--results-dir", type=Path, default=Path(".kubefit/podkill-results")
-    )
-    podkill_run.add_argument(
-        "--lock-dir", type=Path, default=Path(".kubefit/benchmark-locks")
-    )
+    podkill_run.add_argument("--results-dir", type=Path, default=Path(".kubefit/podkill-results"))
+    podkill_run.add_argument("--lock-dir", type=Path, default=Path(".kubefit/benchmark-locks"))
     podkill_run.add_argument("--timeout-seconds", type=_positive_float, default=120)
-    podkill_run.add_argument(
-        "--probe-interval-seconds", type=_positive_float, default=0.5
-    )
-    podkill_run.add_argument(
-        "--probe-timeout-seconds", type=_positive_float, default=2
-    )
-    podkill_run.add_argument(
-        "--required-consecutive-successes", type=_positive_int, default=3
-    )
+    podkill_run.add_argument("--probe-interval-seconds", type=_positive_float, default=0.5)
+    podkill_run.add_argument("--probe-timeout-seconds", type=_positive_float, default=2)
+    podkill_run.add_argument("--required-consecutive-successes", type=_positive_int, default=3)
     podkill_campaign = subcommands.add_parser(
         "podkill-campaign-plan",
         help="preregister repeated PodKill count, stopping rule, and recovery limits",
@@ -354,9 +342,7 @@ def build_parser() -> argparse.ArgumentParser:
     podkill_campaign.add_argument("--performance-pair", required=True, type=Path)
     podkill_campaign.add_argument("--context", required=True)
     podkill_campaign.add_argument("--planned-trials", required=True, type=_positive_int)
-    podkill_campaign.add_argument(
-        "--allowed-failed-trials", type=_non_negative_int, default=0
-    )
+    podkill_campaign.add_argument("--allowed-failed-trials", type=_non_negative_int, default=0)
     podkill_campaign.add_argument(
         "--service-recovery-limit-seconds", required=True, type=_positive_float
     )
@@ -371,9 +357,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="assess and persist a complete preregistered PodKill campaign",
     )
     podkill_campaign_check.add_argument("--plan", required=True, type=Path)
-    podkill_campaign_check.add_argument(
-        "--trial", required=True, action="append", type=Path
-    )
+    podkill_campaign_check.add_argument("--trial", required=True, action="append", type=Path)
     podkill_campaign_check.add_argument(
         "--output-dir",
         type=Path,
@@ -386,9 +370,7 @@ def build_parser() -> argparse.ArgumentParser:
     campaign_plan.add_argument("--proposal", required=True, type=Path)
     campaign_plan.add_argument("--planned-pairs", required=True, type=int)
     campaign_plan.add_argument("--randomization-seed-file", required=True, type=Path)
-    campaign_plan.add_argument(
-        "--output-dir", type=Path, default=Path("benchmarks/campaigns")
-    )
+    campaign_plan.add_argument("--output-dir", type=Path, default=Path("benchmarks/campaigns"))
     campaign_check = subcommands.add_parser(
         "benchmark-campaign-check",
         help="verify collected pairs against a preregistered campaign without mutation",
@@ -527,14 +509,18 @@ def _add_observation_arguments(parser: argparse.ArgumentParser) -> None:
         choices=("production", "demo"),
         default="production",
         help=(
-            "production uses configurable multi-day evidence; "
-            "demo fixes a 1-hour controlled window"
+            "production uses configurable multi-day evidence; demo fixes a 1-hour controlled window"
         ),
     )
     parser.add_argument("--days", type=int)
     parser.add_argument("--step-seconds", type=int)
     parser.add_argument("--identity-store", type=Path)
     parser.add_argument("--context")
+    parser.add_argument(
+        "--verify-pod-uid-source",
+        action="store_true",
+        help="require current Kubernetes Pod UIDs to match kube_pod_info in Prometheus",
+    )
     parser.add_argument(
         "--minimum-cpu-millicores",
         type=_positive_int,
@@ -548,9 +534,14 @@ def _add_observation_arguments(parser: argparse.ArgumentParser) -> None:
 def _collect_observation(
     args: argparse.Namespace,
 ) -> tuple[DeploymentResources, WorkloadMetrics, ObservedUsage]:
+    if args.verify_pod_uid_source and not args.context:
+        raise SystemExit("--verify-pod-uid-source requires an explicit --context")
     workload = KubectlDeploymentCollector(context=args.context).collect(
         args.namespace, args.deployment, args.container
     )
+    prometheus = PrometheusClient(args.prometheus_url)
+    if args.verify_pod_uid_source:
+        prometheus.verify_pod_uids(workload.namespace, workload.pod_uids)
     replica_sets = workload.replica_sets
     if args.identity_store is not None:
         identity = IdentitySnapshotStore(args.identity_store).remember(
@@ -562,7 +553,7 @@ def _collect_observation(
         )
         replica_sets = list(identity.replica_sets)
     observation_days, step_seconds, _ = _observation_configuration(args)
-    metrics = PrometheusClient(args.prometheus_url).workload_metrics(
+    metrics = prometheus.workload_metrics(
         workload.namespace,
         replica_sets,
         workload.pods,
@@ -636,6 +627,13 @@ def _observation_configuration(
 
 
 def _run_analyze(args: argparse.Namespace) -> None:
+    source_labels = (args.cluster_label, args.metrics_source_label)
+    if any(label is not None for label in source_labels) and (
+        not all(label is not None for label in source_labels) or not args.context
+    ):
+        raise SystemExit(
+            "source labels require --context, --cluster-label, and --metrics-source-label"
+        )
     workload, _, observed = _collect_observation(args)
     _, _, policy = _observation_configuration(args)
     evaluation = evaluate_resources(
@@ -662,6 +660,14 @@ def _run_analyze(args: argparse.Namespace) -> None:
         evaluation=evaluation,
         observed_usage=observed,
         recommendation_policy=RecommendationPolicySnapshot.from_policy(policy),
+        observation_source=(
+            ObservationSource(
+                cluster_label=args.cluster_label,
+                metrics_source_label=args.metrics_source_label,
+            )
+            if args.cluster_label is not None
+            else None
+        ),
     )
     print(result.model_dump_json(indent=2))
 
@@ -698,6 +704,7 @@ def _run_reanalyze(args: argparse.Namespace) -> None:
         evaluation=evaluation,
         observed_usage=observed,
         recommendation_policy=RecommendationPolicySnapshot.from_policy(policy),
+        observation_source=previous.observation_source,
     )
     print(result.model_dump_json(indent=2))
 
@@ -992,9 +999,7 @@ def _run_podkill(args: argparse.Namespace) -> None:
             namespace=target.namespace,
             deployment=target.deployment,
         ):
-            validate_podkill_prerequisites(
-                args.change, args.performance_pair, target
-            )
+            validate_podkill_prerequisites(args.change, args.performance_pair, target)
             approved = inspector.inspect(target)
             result = runner.run(approved, args.target_url)
             artifact = write_podkill_artifact(
@@ -1015,9 +1020,7 @@ def _run_podkill(args: argparse.Namespace) -> None:
                 "status": artifact.status,
                 "reused": artifact.reused,
                 "deleted_pod_uid": result.deleted.pod_uid,
-                "replacement_pod_uid": (
-                    result.replacement.pod_uid if result.replacement else None
-                ),
+                "replacement_pod_uid": (result.replacement.pod_uid if result.replacement else None),
                 "service_recovery_seconds": result.service_recovery_seconds,
                 "replacement_ready_seconds": result.replacement_ready_seconds,
             },
@@ -1066,9 +1069,7 @@ def _run_podkill_campaign_check(args: argparse.Namespace) -> None:
         print(assessment.model_dump_json(indent=2))
         raise SystemExit(2)
     try:
-        artifact = write_podkill_campaign_evidence(
-            args.output_dir, args.plan, args.trial
-        )
+        artifact = write_podkill_campaign_evidence(args.output_dir, args.plan, args.trial)
         loaded = load_podkill_campaign_evidence(artifact.path)
     except RuntimeError as exc:
         raise SystemExit(str(exc)) from exc
@@ -1116,9 +1117,7 @@ def _run_benchmark_campaign_check(args: argparse.Namespace) -> None:
     if completion.status != "complete":
         print(completion.model_dump_json(indent=2))
         raise SystemExit(2)
-    artifact = write_benchmark_campaign_evidence(
-        args.output_dir, args.plan, args.pair
-    )
+    artifact = write_benchmark_campaign_evidence(args.output_dir, args.plan, args.pair)
     loaded = load_benchmark_campaign_evidence(artifact.path)
     print(
         json.dumps(
@@ -1210,9 +1209,7 @@ def _run_publish(args: argparse.Namespace) -> None:
     }
     campaign_evidence_id = getattr(plan, "benchmark_campaign_evidence_id", None)
     if campaign_evidence_id is not None:
-        output["benchmark_campaign_evidence_id"] = (
-            campaign_evidence_id
-        )
+        output["benchmark_campaign_evidence_id"] = campaign_evidence_id
     print(json.dumps(output, indent=2, sort_keys=True))
 
 
@@ -1285,9 +1282,7 @@ def _run_publish_check(args: argparse.Namespace) -> bool:
     repository = None
     try:
         repository = git_remote.repository(local.repository_root, args.remote)
-        remote_sha = git_remote.branch_sha(
-            local.repository_root, args.remote, plan.branch_name
-        )
+        remote_sha = git_remote.branch_sha(local.repository_root, args.remote, plan.branch_name)
         if remote_sha is None:
             remote_state = "absent"
         elif local.local_commit_sha == remote_sha:
@@ -1321,9 +1316,7 @@ def _run_publish_check(args: argparse.Namespace) -> bool:
                 "token_present": False,
             }
         )
-        blockers.append(
-            f"GitHub API token is missing from {args.github_token_env}"
-        )
+        blockers.append(f"GitHub API token is missing from {args.github_token_env}")
     elif repository is None:
         checks.append(
             {
@@ -1355,9 +1348,7 @@ def _run_publish_check(args: argparse.Namespace) -> bool:
                 "read-only API access does not prove branch or pull-request write permission"
             )
             if access.default_branch != local.base_branch:
-                warnings.append(
-                    "local base branch differs from the GitHub default branch"
-                )
+                warnings.append("local base branch differs from the GitHub default branch")
         except Exception as exc:
             detail = _redact_secret(str(exc), token)
             checks.append(

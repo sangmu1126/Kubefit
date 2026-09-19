@@ -8,7 +8,13 @@ import pytest
 
 import api.cli as cli_module
 from api.cli import build_parser
-from evaluator import AnalysisArtifact, AnalysisTarget, evaluate_patch_eligibility
+from collector.prometheus import PrometheusError
+from evaluator import (
+    AnalysisArtifact,
+    AnalysisTarget,
+    ObservationSource,
+    evaluate_patch_eligibility,
+)
 from gitops import ManifestPatchError
 from recommender import CurrentResources
 from tests.test_analysis_artifact import replayable_analysis
@@ -141,6 +147,76 @@ def test_analyze_emits_replayable_schema_v2(
     assert restored.recommendation_policy.algorithm == "resource-recommendation/v1"
 
 
+def test_analyze_retains_operator_declared_source_without_endpoint_url(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    replayable = replayable_analysis()
+    workload = SimpleNamespace(
+        namespace="demo",
+        name="api",
+        container="api",
+        uid=replayable.workload_uid,
+        created_at=replayable.workload_created_at,
+        resources=replayable.evaluation.current,
+        desired_replicas=2,
+    )
+    monkeypatch.setattr(
+        cli_module,
+        "_collect_observation",
+        lambda args: (workload, None, replayable.observed_usage),
+    )
+
+    cli_module.main(
+        [
+            "analyze",
+            "--deployment",
+            "api",
+            "--context",
+            "kubefit-eks-pilot",
+            "--prometheus-url",
+            "http://private.internal:9090",
+            "--cluster-label",
+            "eks-seoul-pilot",
+            "--metrics-source-label",
+            "prometheus-pilot",
+            "--cpu-core-hour-usd",
+            "0.04",
+            "--memory-gib-hour-usd",
+            "0.005",
+            "--price-source",
+            "example://test",
+        ]
+    )
+
+    raw = capsys.readouterr().out
+    restored = AnalysisArtifact.model_validate_json(raw)
+    assert restored.observation_source is not None
+    assert restored.observation_source.cluster_label == "eks-seoul-pilot"
+    assert "private.internal" not in raw
+
+
+def test_analyze_source_labels_require_explicit_context_and_pair() -> None:
+    base = [
+        "analyze",
+        "--deployment",
+        "api",
+        "--cpu-core-hour-usd",
+        "0.04",
+        "--memory-gib-hour-usd",
+        "0.005",
+        "--price-source",
+        "example://test",
+    ]
+    for missing in (
+        ["--cluster-label", "pilot"],
+        ["--context", "pilot", "--cluster-label", "pilot"],
+    ):
+        args = build_parser().parse_args(base + missing)
+        with pytest.raises(SystemExit, match="source labels require"):
+            cli_module._run_analyze(args)
+
+
 def test_reanalyze_raises_only_the_retained_cpu_floor(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
@@ -165,6 +241,28 @@ def test_reanalyze_raises_only_the_retained_cpu_floor(
     assert refined.recommendation_policy.minimum_cpu_millicores == 400
     assert refined.evaluation.recommendation.recommended.cpu_request_millicores == 400
     assert refined.evaluation.cost.assumptions == source.evaluation.cost.assumptions
+
+
+def test_reanalyze_preserves_operator_declared_source(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    source = replayable_analysis().model_copy(
+        update={
+            "observation_source": ObservationSource(
+                cluster_label="eks-seoul-pilot",
+                metrics_source_label="prometheus-pilot",
+            )
+        }
+    )
+    source_path = tmp_path / "analysis.json"
+    source_path.write_text(source.model_dump_json())
+
+    cli_module.main(
+        ["reanalyze", "--analysis", str(source_path), "--minimum-cpu-millicores", "400"]
+    )
+
+    refined = AnalysisArtifact.model_validate_json(capsys.readouterr().out)
+    assert refined.observation_source == source.observation_source
 
 
 def test_reanalyze_rejects_a_lower_cpu_floor(tmp_path: Path) -> None:
@@ -198,6 +296,51 @@ def test_readiness_does_not_require_price_arguments() -> None:
     assert args.deployment == "demo"
     assert args.context == "kind-kubefit"
     assert not hasattr(args, "cpu_core_hour_usd")
+
+
+def test_pod_uid_source_verification_requires_explicit_context() -> None:
+    args = build_parser().parse_args(
+        ["readiness", "--deployment", "demo", "--verify-pod-uid-source"]
+    )
+
+    with pytest.raises(SystemExit, match="requires an explicit --context"):
+        cli_module._collect_observation(args)
+
+
+def test_pod_uid_source_mismatch_stops_before_metric_collection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: list[str] = []
+
+    class FakeCollector:
+        def __init__(self, context: str) -> None:
+            assert context == "eks-pilot"
+
+        def collect(self, namespace: str, deployment: str, container: str | None):
+            events.append("kubernetes")
+            return SimpleNamespace(namespace=namespace, pod_uids={"api-a": "uid-a"})
+
+    class FakePrometheus:
+        def __init__(self, url: str) -> None:
+            assert url == "http://localhost:9090"
+
+        def verify_pod_uids(self, namespace: str, pod_uids: dict[str, str]) -> None:
+            events.append("verify")
+            raise PrometheusError("mismatched Pod UID")
+
+        def workload_metrics(self, *args, **kwargs):
+            events.append("metrics")
+            raise AssertionError("metric collection must not start")
+
+    monkeypatch.setattr(cli_module, "KubectlDeploymentCollector", FakeCollector)
+    monkeypatch.setattr(cli_module, "PrometheusClient", FakePrometheus)
+    args = build_parser().parse_args(
+        ["readiness", "--deployment", "api", "--context", "eks-pilot", "--verify-pod-uid-source"]
+    )
+
+    with pytest.raises(PrometheusError, match="mismatched Pod UID"):
+        cli_module._collect_observation(args)
+    assert events == ["kubernetes", "verify"]
 
 
 def test_demo_observation_profile_has_fixed_short_window_and_strict_coverage() -> None:
@@ -324,9 +467,7 @@ def test_check_writes_ci_summary_and_enforces_the_verdict(
         model_dump=lambda *, mode: {"status": status, "assessment_id": "pair"},
     )
     summaries = []
-    monkeypatch.setattr(
-        cli_module, "assess_counterbalanced_pair", lambda first, second: assessment
-    )
+    monkeypatch.setattr(cli_module, "assess_counterbalanced_pair", lambda first, second: assessment)
     monkeypatch.setattr(
         cli_module,
         "append_step_summary",
@@ -368,9 +509,7 @@ def test_check_uses_github_step_summary_environment_path(
     )
     paths = []
     monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(summary_path))
-    monkeypatch.setattr(
-        cli_module, "assess_counterbalanced_pair", lambda first, second: assessment
-    )
+    monkeypatch.setattr(cli_module, "assess_counterbalanced_pair", lambda first, second: assessment)
     monkeypatch.setattr(
         cli_module,
         "append_step_summary",
@@ -528,9 +667,7 @@ def test_prepare_change_publishes_a_machine_readable_artifact(
         ]
     )
 
-    assert calls == [
-        (Path("changes"), Path("base.yaml"), Path("candidate.yaml"), "demo", "api")
-    ]
+    assert calls == [(Path("changes"), Path("base.yaml"), Path("candidate.yaml"), "demo", "api")]
     output = json.loads(capsys.readouterr().out)
     assert output["artifact_id"] == "change-" + "a" * 32
     assert output["reused"] is False
@@ -614,9 +751,7 @@ def test_benchmark_change_persists_verdict_inside_target_lock(
     monkeypatch.setattr(
         cli_module,
         "load_change_bundle",
-        lambda path: SimpleNamespace(
-            change=SimpleNamespace(namespace="demo", deployment="api")
-        ),
+        lambda path: SimpleNamespace(change=SimpleNamespace(namespace="demo", deployment="api")),
     )
     monkeypatch.setattr(
         cli_module,
@@ -762,9 +897,7 @@ def test_benchmark_change_pair_preserves_fail_but_not_invalid(
 
     assert bool(writes) is persisted
     if persisted:
-        assert writes == [
-            (Path("pairs"), Path("results/first"), Path("results/second"))
-        ]
+        assert writes == [(Path("pairs"), Path("results/first"), Path("results/second"))]
     assert json.loads(capsys.readouterr().out)["status"] == status
 
 
@@ -835,16 +968,12 @@ def test_podkill_run_binds_prerequisites_locks_and_persists_result(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     events: list[object] = []
-    target_change = SimpleNamespace(
-        change=SimpleNamespace(namespace="demo", deployment="api")
-    )
+    target_change = SimpleNamespace(change=SimpleNamespace(namespace="demo", deployment="api"))
     approved = SimpleNamespace(selected=SimpleNamespace(pod_uid="old-uid"))
     result = SimpleNamespace(
         status=status,
         deleted=SimpleNamespace(pod_uid="old-uid"),
-        replacement=(
-            SimpleNamespace(pod_uid="replacement-uid") if status == "pass" else None
-        ),
+        replacement=(SimpleNamespace(pod_uid="replacement-uid") if status == "pass" else None),
         service_recovery_seconds=1.0 if status == "pass" else None,
         replacement_ready_seconds=2.0 if status == "pass" else None,
     )
@@ -924,9 +1053,7 @@ def test_podkill_run_binds_prerequisites_locks_and_persists_result(
             cli_module.main(arguments)
         assert raised.value.code == exit_code
 
-    assert [event[0] for event in events if isinstance(event, tuple)].count(
-        "validate"
-    ) == 2
+    assert [event[0] for event in events if isinstance(event, tuple)].count("validate") == 2
     assert events.index("lock-enter") < next(
         index
         for index, event in enumerate(events)
@@ -992,9 +1119,7 @@ def test_podkill_campaign_plan_persists_explicit_policy(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     calls: list[object] = []
-    artifact = SimpleNamespace(
-        path=Path("campaigns/podkill-campaign-abc"), reused=False
-    )
+    artifact = SimpleNamespace(path=Path("campaigns/podkill-campaign-abc"), reused=False)
     plan = SimpleNamespace(
         model_dump=lambda *, mode: {
             "campaign_id": "podkill-campaign-" + "a" * 32,
@@ -1009,9 +1134,7 @@ def test_podkill_campaign_plan_persists_explicit_policy(
         "write_podkill_campaign_plan",
         lambda *args: calls.append(args) or artifact,
     )
-    monkeypatch.setattr(
-        cli_module, "load_podkill_campaign_plan", lambda path: plan
-    )
+    monkeypatch.setattr(cli_module, "load_podkill_campaign_plan", lambda path: plan)
 
     cli_module.main(
         [
@@ -1075,9 +1198,7 @@ def test_podkill_campaign_check_persists_only_complete_valid_outcomes(
         model_dump_json=lambda **_: json.dumps({"status": status}),
         model_dump=lambda **_: {"status": status},
     )
-    monkeypatch.setattr(
-        cli_module, "assess_podkill_campaign", lambda plan, trials: assessment
-    )
+    monkeypatch.setattr(cli_module, "assess_podkill_campaign", lambda plan, trials: assessment)
 
     def write(output, plan, trials):
         writes.append((output, plan, trials))
@@ -1147,9 +1268,7 @@ def test_benchmark_campaign_plan_reads_seed_file_and_prints_frozen_schedule(
             calls.append((output, proposal, pairs, randomization_seed)) or artifact
         ),
     )
-    monkeypatch.setattr(
-        cli_module, "load_benchmark_campaign_plan", lambda path: plan
-    )
+    monkeypatch.setattr(cli_module, "load_benchmark_campaign_plan", lambda path: plan)
 
     cli_module.main(
         [
@@ -1829,9 +1948,7 @@ def test_publish_check_reports_missing_token_without_mutation(
         "token_env": "GITHUB_TOKEN",
         "token_present": False,
     }
-    assert output["blockers"] == [
-        "GitHub API token is missing from GITHUB_TOKEN"
-    ]
+    assert output["blockers"] == ["GitHub API token is missing from GITHUB_TOKEN"]
 
 
 def test_publish_check_reports_ready_without_claiming_write_permission(

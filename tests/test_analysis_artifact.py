@@ -7,6 +7,7 @@ from evaluator import (
     AnalysisArtifact,
     AnalysisTarget,
     CostAssumptions,
+    ObservationSource,
     RecommendationPolicySnapshot,
     evaluate_resources,
     review_analysis_artifact,
@@ -126,6 +127,31 @@ def test_v2_replays_recommendation_from_retained_inputs() -> None:
     assert review.verification_level == "recommendation_replayed"
     assert review.checks[-1].code == "recommendation_replay"
     assert "raw Prometheus time series" in review.limitations[0]
+
+
+def test_v2_source_declaration_survives_review_without_claiming_authentication() -> None:
+    artifact = replayable_analysis().model_copy(
+        update={
+            "observation_source": ObservationSource(
+                cluster_label="eks-seoul-pilot",
+                metrics_source_label="incluster-prometheus",
+            )
+        }
+    )
+
+    restored = AnalysisArtifact.model_validate_json(artifact.model_dump_json())
+    review = review_analysis_artifact(restored)
+
+    assert review.observation_source == artifact.observation_source
+    assert review.observation_source.verification == "operator_declared"
+    assert any("does not authenticate" in item for item in review.limitations)
+    assert "observation_source" not in replayable_analysis().model_dump()
+
+
+@pytest.mark.parametrize("label", ["https://private.example", "token=value", "bad label"])
+def test_source_declaration_rejects_url_or_credential_like_labels(label: str) -> None:
+    with pytest.raises(ValidationError):
+        ObservationSource(cluster_label=label, metrics_source_label="prometheus")
 
 
 @pytest.mark.parametrize(

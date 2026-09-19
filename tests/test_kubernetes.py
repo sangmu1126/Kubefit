@@ -70,6 +70,7 @@ PODS = {
         {
             "metadata": {
                 "name": "demo-abc",
+                "uid": "pod-uid-abc",
                 "ownerReferences": [
                     {
                         "controller": True,
@@ -123,6 +124,7 @@ def test_collects_deployment_resources_and_pods() -> None:
     assert result.resources.cpu_request_millicores == 1000
     assert result.resources.memory_request_mib == 2048
     assert result.pods == ["demo-abc"]
+    assert result.pod_uids == {"demo-abc": "pod-uid-abc"}
     assert result.replica_sets == ["demo-owned"]
     assert result.uid == "deployment-uid"
     assert result.created_at == datetime(2026, 8, 20, tzinfo=UTC)
@@ -137,6 +139,29 @@ def test_collects_deployment_resources_and_pods() -> None:
     assert ["-l", "app=demo"] == commands[1][
         commands[1].index("-l") : commands[1].index("-l") + 2
     ]
+
+
+def test_non_kind_context_collection_uses_only_reads() -> None:
+    commands: list[list[str]] = []
+    context = "arn:aws:eks:ap-northeast-2:123456789012:cluster/pilot"
+
+    def runner(command: list[str]) -> str:
+        commands.append(command)
+        if "deployment" in command:
+            return json.dumps(DEPLOYMENT)
+        if "replicasets" in command:
+            return json.dumps(REPLICA_SETS)
+        return json.dumps(PODS)
+
+    result = KubectlDeploymentCollector(runner=runner, context=context).collect(
+        "demo", "api"
+    )
+
+    assert result.uid == "deployment-uid"
+    assert [command[:4] for command in commands] == [
+        ["kubectl", "--context", context, "get"]
+    ] * 3
+    assert [command[4] for command in commands] == ["deployment", "replicasets", "pods"]
 
 
 def test_rejects_missing_resource_configuration() -> None:

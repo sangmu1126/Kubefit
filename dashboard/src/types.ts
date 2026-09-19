@@ -106,6 +106,11 @@ export interface AnalysisReview {
     reason: string;
   }>;
   limitations: string[];
+  observation_source?: {
+    verification: "operator_declared";
+    cluster_label: string;
+    metrics_source_label: string;
+  };
 }
 
 export interface BenchmarkPhaseMetrics {

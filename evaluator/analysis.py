@@ -14,6 +14,14 @@ class AnalysisTarget(BaseModel):
     container: str = Field(min_length=1)
 
 
+class ObservationSource(BaseModel):
+    verification: Literal["operator_declared"] = "operator_declared"
+    cluster_label: str = Field(min_length=1, max_length=64, pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+    metrics_source_label: str = Field(
+        min_length=1, max_length=64, pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]*$"
+    )
+
+
 class AnalysisArtifact(BaseModel):
     schema_version: Literal[1, 2] = 1
     target: AnalysisTarget
@@ -26,6 +34,9 @@ class AnalysisArtifact(BaseModel):
     recommendation_policy: "RecommendationPolicySnapshot | None" = Field(
         default=None, exclude_if=lambda value: value is None
     )
+    observation_source: ObservationSource | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
 
     @model_validator(mode="after")
     def creation_time_has_timezone(self) -> "AnalysisArtifact":
@@ -33,13 +44,15 @@ class AnalysisArtifact(BaseModel):
             raise ValueError("workload creation timestamp must include timezone")
         _validate_evaluation_integrity(self.evaluation)
         if self.schema_version == 1:
-            if self.observed_usage is not None or self.recommendation_policy is not None:
+            if (
+                self.observed_usage is not None
+                or self.recommendation_policy is not None
+                or self.observation_source is not None
+            ):
                 raise ValueError("schema v1 must not contain schema v2 replay inputs")
             return self
         if self.observed_usage is None or self.recommendation_policy is None:
-            raise ValueError(
-                "schema v2 requires observed_usage and recommendation_policy"
-            )
+            raise ValueError("schema v2 requires observed_usage and recommendation_policy")
         _validate_replay_identity(self)
         _validate_recommendation_replay(self)
         return self
@@ -101,6 +114,9 @@ class AnalysisReview(BaseModel):
     evaluation: EvaluationResult
     checks: list[AnalysisIntegrityCheck]
     limitations: list[str]
+    observation_source: ObservationSource | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
 
 
 def review_analysis_artifact(artifact: AnalysisArtifact) -> AnalysisReview:
@@ -109,8 +125,7 @@ def review_analysis_artifact(artifact: AnalysisArtifact) -> AnalysisReview:
         AnalysisIntegrityCheck(
             code="resource_values",
             reason=(
-                "recommended requests and limits are positive and limits are not "
-                "below requests"
+                "recommended requests and limits are positive and limits are not below requests"
             ),
         ),
         AnalysisIntegrityCheck(
@@ -149,6 +164,11 @@ def review_analysis_artifact(artifact: AnalysisArtifact) -> AnalysisReview:
                 "so percentile aggregation cannot be replayed"
             ),
         )
+        if artifact.observation_source is not None:
+            limitations.append(
+                "observation source labels are operator-declared; artifact replay does "
+                "not authenticate the Kubernetes cluster or Prometheus endpoint"
+            )
     else:
         limitations.insert(
             0,
@@ -159,15 +179,14 @@ def review_analysis_artifact(artifact: AnalysisArtifact) -> AnalysisReview:
         )
     return AnalysisReview(
         artifact_schema_version=artifact.schema_version,
-        verification_level=(
-            "recommendation_replayed" if replayed else "integrity_only"
-        ),
+        verification_level=("recommendation_replayed" if replayed else "integrity_only"),
         target=artifact.target,
         workload_uid=artifact.workload_uid,
         workload_created_at=artifact.workload_created_at,
         evaluation=artifact.evaluation,
         checks=checks,
         limitations=limitations,
+        observation_source=artifact.observation_source,
     )
 
 
@@ -177,9 +196,7 @@ def _validate_replay_identity(artifact: AnalysisArtifact) -> None:
     if observed.workload_uid != artifact.workload_uid:
         raise ValueError("observed usage workload UID conflicts with artifact identity")
     if observed.workload_created_at != artifact.workload_created_at:
-        raise ValueError(
-            "observed usage creation timestamp conflicts with artifact identity"
-        )
+        raise ValueError("observed usage creation timestamp conflicts with artifact identity")
     if observed.desired_replicas != artifact.evaluation.cost.replica_count:
         raise ValueError("observed desired replicas conflict with cost replica count")
 
@@ -196,9 +213,7 @@ def _validate_recommendation_replay(artifact: AnalysisArtifact) -> None:
         policy.to_policy(),
     )
     if artifact.evaluation != expected:
-        raise ValueError(
-            "evaluation conflicts with replayed observation and recommendation policy"
-        )
+        raise ValueError("evaluation conflicts with replayed observation and recommendation policy")
 
 
 def _validate_evaluation_integrity(evaluation: EvaluationResult) -> None:
@@ -217,13 +232,11 @@ def _validate_evaluation_integrity(evaluation: EvaluationResult) -> None:
         raise ValueError("recommended memory limit must not be below its request")
 
     expected_cpu_change = round(
-        (recommended.cpu_request_millicores / evaluation.current.cpu_request_millicores - 1)
-        * 100,
+        (recommended.cpu_request_millicores / evaluation.current.cpu_request_millicores - 1) * 100,
         1,
     )
     expected_memory_change = round(
-        (recommended.memory_request_mib / evaluation.current.memory_request_mib - 1)
-        * 100,
+        (recommended.memory_request_mib / evaluation.current.memory_request_mib - 1) * 100,
         1,
     )
     if evaluation.recommendation.cpu_request_change_percent != expected_cpu_change:

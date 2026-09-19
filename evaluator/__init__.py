@@ -5,6 +5,7 @@ from evaluator.analysis import (
     AnalysisIntegrityCheck,
     AnalysisReview,
     AnalysisTarget,
+    ObservationSource,
     RecommendationPolicySnapshot,
     review_analysis_artifact,
 )
@@ -34,6 +35,7 @@ __all__ = [
     "AnalysisIntegrityCheck",
     "AnalysisReview",
     "AnalysisTarget",
+    "ObservationSource",
     "RecommendationPolicySnapshot",
     "CostComparison",
     "EvaluationResult",
