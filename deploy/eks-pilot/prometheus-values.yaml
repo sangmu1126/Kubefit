@@ -1,0 +1,39 @@
+# Disposable EKS pilot only. Do not use the kind PVC/StorageClass values here.
+# Prometheus data is deliberately lost when its Pod is replaced.
+defaultRules:
+  create: false
+
+alertmanager:
+  enabled: false
+
+grafana:
+  enabled: false
+
+kubeControllerManager:
+  enabled: false
+
+kubeEtcd:
+  enabled: false
+
+kubeProxy:
+  enabled: false
+
+kubeScheduler:
+  enabled: false
+
+prometheus:
+  prometheusSpec:
+    scrapeInterval: 15s
+    evaluationInterval: 30s
+    retention: 6h
+    retentionSize: 1GB
+    storageSpec:
+      emptyDir:
+        sizeLimit: 2Gi
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 1Gi
