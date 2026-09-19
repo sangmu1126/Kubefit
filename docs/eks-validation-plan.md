@@ -27,6 +27,9 @@ All items must be explicit. An unknown price or cleanup owner means **NO-GO**.
   non-production workload. No existing cluster shares the planned name.
 - [ ] A hard **wall-clock stop time** includes provisioning, observation, and cleanup.
   Someone is assigned to perform and verify cleanup even if the experiment fails.
+  The Terraform draft rejects a deadline outside the next four hours at plan
+  time and a stale deadline at apply time; it cannot terminate an ongoing
+  operation or perform cleanup automatically.
 - [ ] The architecture is written down: node type/count, storage, network, load
   balancers, Prometheus choice, and any NAT gateway or public IPv4 use.
 - [ ] An AWS Pricing Calculator estimate or equivalent rate sheet is saved with its

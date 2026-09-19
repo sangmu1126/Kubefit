@@ -123,6 +123,7 @@ evidence of engineering judgment than a final screenshot without context.
 | [0099](0099-disabled-eks-infrastructure-draft.md) | Disabled EKS infrastructure draft | Pin a reviewable VPC/EKS topology while keeping the default plan at zero resources |
 | [0100](0100-eks-ephemeral-observation-plan.md) | EKS ephemeral observation plan | Render an EKS-only emptyDir monitoring stack and define live checks without provisioning |
 | [0101](0101-fail-closed-eks-preflight.md) | Fail-closed EKS local preflight | Reject nonzero default plans and unsafe rendered monitoring changes before any AWS work |
+| [0102](0102-eks-deadline-gate.md) | EKS deadline gate | Reject stale or overlong experiment windows without pretending Terraform performs teardown |
 
 ## Visual language
 

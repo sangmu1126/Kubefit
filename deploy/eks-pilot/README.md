@@ -58,10 +58,15 @@ The two modules and provider versions are pinned in [`main.tf`](main.tf). A
 future approved operator can supply the required inputs via an ignored local
 `*.tfvars` file and inspect `terraform plan -var-file=...`; simply setting
 `enable_experiment=true` without a matching account, a valid `/32`, a named
-owner, a positive budget, and a timestamp is blocked. The account check does
-not verify that the chosen name is unused, that funding exists, or that the
-deadline is enforced. Do not run `apply` from this README without separate
-approval and the complete runbook.
+owner, a positive budget, and a valid UTC `stop_at_utc` is blocked. The stop
+time must be in the future and within four hours **when the plan is made**;
+an apply-time check rejects a saved plan if that deadline has passed. Terraform
+does not stop a running create operation or automatically destroy resources at
+that time. The operator must reserve teardown time inside the same window and
+stop manually. The account check does not verify that the chosen name is
+unused, that funding exists, or that the deadline is operationally enforced.
+Do not run `apply` from this README without separate approval and the complete
+runbook.
 
 ## Teardown boundary
 
