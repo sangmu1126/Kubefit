@@ -151,7 +151,8 @@ script** inside `kubefit-demo`, sending traffic to the internal Service without
 keeping a local port-forward alive. A local API disconnect can interrupt status
 or log retrieval but should not itself terminate a running Job. This is a new
 test topology, not a successful validation or a drop-in comparison with the
-failed local run.
+failed local run. The unchanged Job completed a **15-second local kind smoke
+test**, but has not run on EKS or completed the one-hour profile.
 
 Before another separately approved, chargeable attempt, verify that two
 `m6i.large` nodes can also schedule this Job's 250m/256Mi request alongside
@@ -175,25 +176,48 @@ kubectl --context kubefit-eks-pilot -n kubefit-demo get \
 kubectl --context kubefit-eks-pilot -n kubefit-demo create configmap \
   kubefit-observation-profile \
   --from-file=observation_profile.js=benchmarks/k6/observation_profile.js
+kubectl --context kubefit-eks-pilot -n kubefit-demo patch configmap \
+  kubefit-observation-profile --type merge -p '{"immutable":true}'
 kubectl --context kubefit-eks-pilot create -f deploy/eks-pilot/observation-job.yaml
 ```
 
 Periodically inspect Job conditions, Pod phase/restarts, worker capacity, and
 the current demo Pod UIDs. Do not rely on one long `kubectl wait` stream to
 prove completion. After completion **and before its one-hour TTL deletes the
-Job**, save logs to the ignored local evidence directory and confirm the Job
-condition is `Complete`; the JSON summary's `duration_minutes: 60` alone does
-not prove elapsed runtime. A failed or timed-out Job must remain failed evidence.
+Job**, save the Job, Pod, and immutable ConfigMap JSON plus logs to the ignored
+local evidence directory. The JSON summary's `duration_minutes: 60` alone does not prove
+elapsed runtime. Save failed or timed-out objects too, and do not restart the
+Job to replace failed evidence.
 
 ```sh
+mkdir -p .kubefit/eks-pilot
 kubectl --context kubefit-eks-pilot -n kubefit-demo get job kubefit-observation
 kubectl --context kubefit-eks-pilot -n kubefit-demo get pods \
   -l batch.kubernetes.io/job-name=kubefit-observation
+kubectl --context kubefit-eks-pilot -n kubefit-demo get job kubefit-observation \
+  -o json > .kubefit/eks-pilot/k6-job.json
+kubectl --context kubefit-eks-pilot -n kubefit-demo get pods \
+  -l batch.kubernetes.io/job-name=kubefit-observation \
+  -o json > .kubefit/eks-pilot/k6-pods.json
+kubectl --context kubefit-eks-pilot -n kubefit-demo get configmap \
+  kubefit-observation-profile -o json > .kubefit/eks-pilot/k6-configmap.json
 kubectl --context kubefit-eks-pilot -n kubefit-demo logs job/kubefit-observation \
   > .kubefit/eks-pilot/k6-job.log
-kubectl --context kubefit-eks-pilot -n kubefit-demo get job kubefit-observation \
-  -o jsonpath='{.status.conditions}'
+.venv/bin/python -m safety.eks_observation_job \
+  --job-json .kubefit/eks-pilot/k6-job.json \
+  --pods-json .kubefit/eks-pilot/k6-pods.json \
+  --configmap-json .kubefit/eks-pilot/k6-configmap.json \
+  --k6-log .kubefit/eks-pilot/k6-job.log
 ```
+
+This verifier requires one completed no-retry Job, one owned Pod, an immutable
+ConfigMap matching the preregistered script checksum, the pinned image,
+zero restarts, a successful container run lasting about an hour, and
+the fixed k6 request count with no dropped iterations and under 1% errors.
+A PASS proves only that the **load profile completed**. Independently verify
+unchanged demo Pod UIDs, uninterrupted Prometheus history, sufficient sample
+coverage, and KubeFit readiness before claiming a recommendation. It does not
+prove AWS savings or external-user performance.
 
 The Prometheus tunnel is still needed for local KubeFit readiness, but it may
 be restarted for **read-only collection** after a temporary disconnect; first

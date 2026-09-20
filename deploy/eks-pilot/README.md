@@ -101,5 +101,9 @@ provide a reviewable observation path after separate approval. The monitoring
 installation and short UID-verified collection path have been exercised; an
 uninterrupted one-hour result has not.
 The [proposed in-cluster k6 Job](observation-job.yaml) avoids a long-lived
-local traffic port-forward, but has only local static/image validation and
-requires a new capacity/cost review and explicit approval before any EKS use.
+local traffic port-forward. It passed a 15-second
+[isolated kind smoke](../../docs/devlog/0107-local-job-smoke-and-evidence-gate.md)
+with an explicitly different ConfigMap script, and a
+[fail-closed verifier](../../safety/eks_observation_job.py) is available for
+future Job/Pod/ConfigMap/log evidence. Neither proves a full one-hour EKS run. A new
+capacity/cost review and explicit approval remain necessary before EKS use.
