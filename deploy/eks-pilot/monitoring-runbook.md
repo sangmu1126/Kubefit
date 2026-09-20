@@ -142,6 +142,73 @@ invalidate the observation window;
 do not interpret an empty/idle graph as a valid recommendation. The production
 seven-day profile is not feasible in this short disposable pilot.
 
+### Proposed next attempt: in-cluster k6 Job (not deployed)
+
+The [second probe](../../docs/devlog/0105-second-eks-pilot.md) lost both local
+API port-forwards after about 35 minutes even though the nodes and Pods stayed
+up. The [proposed Job](observation-job.yaml) runs the **same committed 60-minute
+script** inside `kubefit-demo`, sending traffic to the internal Service without
+keeping a local port-forward alive. A local API disconnect can interrupt status
+or log retrieval but should not itself terminate a running Job. This is a new
+test topology, not a successful validation or a drop-in comparison with the
+failed local run.
+
+Before another separately approved, chargeable attempt, verify that two
+`m6i.large` nodes can also schedule this Job's 250m/256Mi request alongside
+the demo and monitoring Pods. The Job can consume up to 1 CPU and 1 GiB, so
+co-location may affect the measured workload. Account for its image pull and
+node pressure; do not add nodes or alter the fixed k6 rates ad hoc. Its pinned
+image started as a non-root user and loaded the fixed script in local Docker,
+but this Job has **not** run on EKS. A `Pending`, `ImagePullBackOff`, failed Job,
+nonzero k6 exit, dropped
+iteration, or excessive request error invalidates the profile.
+
+Only on the new approved cluster, after confirming neither object exists and
+recording the script checksum, create the ConfigMap **from the source file**
+and the fixed Job. Do not apply the whole `deploy/eks-pilot` directory.
+
+```sh
+shasum -a 256 benchmarks/k6/observation_profile.js
+kubectl --context kubefit-eks-pilot -n kubefit-demo get \
+  configmap/kubefit-observation-profile job/kubefit-observation
+# Both NotFound responses are required before creation.
+kubectl --context kubefit-eks-pilot -n kubefit-demo create configmap \
+  kubefit-observation-profile \
+  --from-file=observation_profile.js=benchmarks/k6/observation_profile.js
+kubectl --context kubefit-eks-pilot create -f deploy/eks-pilot/observation-job.yaml
+```
+
+Periodically inspect Job conditions, Pod phase/restarts, worker capacity, and
+the current demo Pod UIDs. Do not rely on one long `kubectl wait` stream to
+prove completion. After completion **and before its one-hour TTL deletes the
+Job**, save logs to the ignored local evidence directory and confirm the Job
+condition is `Complete`; the JSON summary's `duration_minutes: 60` alone does
+not prove elapsed runtime. A failed or timed-out Job must remain failed evidence.
+
+```sh
+kubectl --context kubefit-eks-pilot -n kubefit-demo get job kubefit-observation
+kubectl --context kubefit-eks-pilot -n kubefit-demo get pods \
+  -l batch.kubernetes.io/job-name=kubefit-observation
+kubectl --context kubefit-eks-pilot -n kubefit-demo logs job/kubefit-observation \
+  > .kubefit/eks-pilot/k6-job.log
+kubectl --context kubefit-eks-pilot -n kubefit-demo get job kubefit-observation \
+  -o jsonpath='{.status.conditions}'
+```
+
+The Prometheus tunnel is still needed for local KubeFit readiness, but it may
+be restarted for **read-only collection** after a temporary disconnect; first
+reconfirm the same Prometheus Pod and current workload UIDs. A Prometheus Pod
+restart loses `emptyDir` history and invalidates the window. Before teardown,
+remove this experiment's Job and ConfigMap explicitly, after retaining its
+logs; namespace deletion is the final fallback.
+
+```sh
+kubectl --context kubefit-eks-pilot -n kubefit-demo delete job \
+  kubefit-observation --ignore-not-found
+kubectl --context kubefit-eks-pilot -n kubefit-demo delete configmap \
+  kubefit-observation-profile --ignore-not-found
+```
+
 ## 5. Cleanup while the approved deadline remains
 
 Stop traffic and retain only redacted evidence. Before deleting the cluster,

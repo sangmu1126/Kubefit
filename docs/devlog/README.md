@@ -127,6 +127,7 @@ evidence of engineering judgment than a final screenshot without context.
 | [0103](0103-eks-pilot-day-preparation.md) | EKS pilot day preparation | Refresh read-only account/rate inputs and stage an audited create-plan plus teardown worksheet |
 | [0104](0104-first-eks-probe-and-teardown.md) | First live EKS probe and teardown | Record `NotReady` nodes, missing add-ons, and verified manual teardown without claiming an EKS success |
 | [0105](0105-second-eks-pilot.md) | Second EKS pilot | Verify Ready nodes and metrics, retain the failed port-forward load result, and verify full teardown |
+| [0106](0106-in-cluster-load-proposal.md) | In-cluster EKS load proposal | Prepare a bounded k6 Job without creating AWS resources or claiming full-run success |
 
 ## Visual language
 

@@ -100,3 +100,6 @@ restart, so a restarted observation window must start over. The
 provide a reviewable observation path after separate approval. The monitoring
 installation and short UID-verified collection path have been exercised; an
 uninterrupted one-hour result has not.
+The [proposed in-cluster k6 Job](observation-job.yaml) avoids a long-lived
+local traffic port-forward, but has only local static/image validation and
+requires a new capacity/cost review and explicit approval before any EKS use.

@@ -1,0 +1,60 @@
+# Proposed for a future separately approved disposable EKS pilot. Not deployed.
+# Create kubefit-observation-profile from benchmarks/k6/observation_profile.js
+# in kubefit-demo before applying this Job; see monitoring-runbook.md.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: kubefit-observation
+  namespace: kubefit-demo
+  labels:
+    app.kubernetes.io/name: kubefit-observation
+    app.kubernetes.io/part-of: kubefit-eks-pilot
+spec:
+  completions: 1
+  parallelism: 1
+  backoffLimit: 0
+  activeDeadlineSeconds: 3900
+  ttlSecondsAfterFinished: 3600
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: kubefit-observation
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 12345
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: k6
+          image: docker.io/grafana/k6:2.1.0@sha256:65c920dc067d5e2e00befbf982af6ad6ad0117034e8b1c65817c7975c52d4669
+          imagePullPolicy: IfNotPresent
+          args:
+            - run
+            - --quiet
+            - /scripts/observation_profile.js
+          env:
+            - name: KUBEFIT_TARGET_URL
+              value: http://overprovisioned-api.kubefit-demo.svc.cluster.local/
+          resources:
+            requests:
+              cpu: 250m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: script
+              mountPath: /scripts
+              readOnly: true
+      volumes:
+        - name: script
+          configMap:
+            name: kubefit-observation-profile
+            defaultMode: 292 # 0444, readable without writing the script
