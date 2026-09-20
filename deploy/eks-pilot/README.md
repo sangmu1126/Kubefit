@@ -1,8 +1,9 @@
-# Disposable EKS compatibility pilot (not deployed)
+# Disposable EKS compatibility pilot (currently torn down)
 
 This directory is a **reviewable infrastructure draft**, not an instruction to
 launch a cluster. `enable_experiment` defaults to `false`; a default plan creates
-**zero resources**. No Terraform `apply` has been run for this pilot.
+**zero resources**. Two approved, temporary EKS probes were run and fully
+torn down on 2026-09-20; there is no active pilot cluster.
 
 The planned topology is one EKS 1.34 cluster in Seoul, two private-subnet
 `m6i.large` managed nodes in two AZs, one NAT gateway with one public IPv4,
@@ -47,9 +48,13 @@ inventory, live scrape targets, capacity, rates, or teardown.
 
 On the experiment day, follow the [pilot worksheet](pilot-worksheet.md).
 The [first live probe](../../docs/devlog/0104-first-eks-probe-and-teardown.md)
-ended with two `NotReady` workers and complete teardown. Missing managed EKS
-add-ons were identified and added to the draft; **the correction has not yet
-been deployed or validated on EKS**.
+ended with two `NotReady` workers and complete teardown. The corrected
+add-ons were exercised in the [second probe](../../docs/devlog/0105-second-eks-pilot.md):
+two workers became `Ready`, Prometheus targets and current-Pod metrics were
+observed, but the one-hour load profile failed when both local port-forwards
+lost their EKS API stream. Readiness stayed insufficient and no EKS
+recommendation or savings result was produced. The second cluster was also
+fully torn down. Neither probe is permission to recreate it.
 An enabled binary plan can be inspected with the
 [create-plan auditor](../../safety/eks_pilot_plan_audit.py), but its PASS is only
 a structural check; every resource and current price still need human review.
@@ -92,4 +97,6 @@ existing local Prometheus values use the kind `standard` StorageClass and are
 **not** EKS-ready. An ephemeral Prometheus deployment would lose metrics on
 restart, so a restarted observation window must start over. The
 [monitoring runbook](monitoring-runbook.md) and [EKS-only values](prometheus-values.yaml)
-provide a reviewable, unexecuted observation path after separate approval.
+provide a reviewable observation path after separate approval. The monitoring
+installation and short UID-verified collection path have been exercised; an
+uninterrupted one-hour result has not.

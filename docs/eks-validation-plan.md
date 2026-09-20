@@ -1,6 +1,10 @@
 # EKS validation decision gate
 
-**Status: planning only. No cluster is authorized for creation by this document.**
+**Status: reusable planning gate. No cluster is authorized for creation by this document.**
+Two separately approved, disposable probes were completed and torn down on
+2026-09-20; see the [first](devlog/0104-first-eks-probe-and-teardown.md) and
+[second](devlog/0105-second-eks-pilot.md) records. The second verified nodes
+and metrics but did not complete a valid one-hour load/recommendation.
 The [disposable Terraform draft](../deploy/eks-pilot/README.md) is disabled by
 default and has no deployment authorization. It covers VPC and EKS only; the
 Prometheus/workload installation and teardown need a separate reviewed runbook.

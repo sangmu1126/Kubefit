@@ -1,6 +1,9 @@
 # Disposable EKS observation runbook
 
-**Not executed.** Follow this only after the [EKS GO/NO-GO gate](../../docs/eks-validation-plan.md)
+**Partially exercised; full load profile failed.** The [second EKS probe](../../docs/devlog/0105-second-eks-pilot.md)
+confirmed Pod metrics and UID-verified partial readiness, but both local
+port-forwards lost their EKS API stream before the one-hour load finished.
+Follow this only after the [EKS GO/NO-GO gate](../../docs/eks-validation-plan.md)
 and a separately approved infrastructure plan. It applies only to the new,
 experiment-owned cluster; it must not install into an existing production
 cluster. KubeFit itself stays outside EKS and only reads the selected workload.
@@ -128,9 +131,14 @@ KUBEFIT_TARGET_URL=http://127.0.0.1:18080/ \
 
 If there is not enough time, stop without attempting to shorten the profile.
 Port-forward traffic proves only a controlled observation path; it is not an
-EKS ingress or end-user latency benchmark.
-Missing metrics, UID mismatch,
-Pod replacement, or Prometheus restart invalidates the observation window;
+EKS ingress or end-user latency benchmark. A long, high-rate run through a
+single local port-forward was interrupted in the second probe. If either the
+Service or Prometheus tunnel drops, the run is invalid: stop, preserve the
+failed result, and do not silently reconnect or treat the partial window as
+the preregistered one-hour profile. A different load-delivery method needs a
+new capacity, cost, and test-plan review before another paid attempt.
+Missing metrics, UID mismatch, Pod replacement, or Prometheus restart also
+invalidate the observation window;
 do not interpret an empty/idle graph as a valid recommendation. The production
 seven-day profile is not feasible in this short disposable pilot.
 

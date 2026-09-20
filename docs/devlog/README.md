@@ -126,6 +126,7 @@ evidence of engineering judgment than a final screenshot without context.
 | [0102](0102-eks-deadline-gate.md) | EKS deadline gate | Reject stale or overlong experiment windows without pretending Terraform performs teardown |
 | [0103](0103-eks-pilot-day-preparation.md) | EKS pilot day preparation | Refresh read-only account/rate inputs and stage an audited create-plan plus teardown worksheet |
 | [0104](0104-first-eks-probe-and-teardown.md) | First live EKS probe and teardown | Record `NotReady` nodes, missing add-ons, and verified manual teardown without claiming an EKS success |
+| [0105](0105-second-eks-pilot.md) | Second EKS pilot | Verify Ready nodes and metrics, retain the failed port-forward load result, and verify full teardown |
 
 ## Visual language
 
