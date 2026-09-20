@@ -46,6 +46,10 @@ PASS is **not** permission to enable the experiment, and it cannot verify AWS
 inventory, live scrape targets, capacity, rates, or teardown.
 
 On the experiment day, follow the [pilot worksheet](pilot-worksheet.md).
+The [first live probe](../../docs/devlog/0104-first-eks-probe-and-teardown.md)
+ended with two `NotReady` workers and complete teardown. Missing managed EKS
+add-ons were identified and added to the draft; **the correction has not yet
+been deployed or validated on EKS**.
 An enabled binary plan can be inspected with the
 [create-plan auditor](../../safety/eks_pilot_plan_audit.py), but its PASS is only
 a structural check; every resource and current price still need human review.

@@ -68,7 +68,8 @@ terraform -chdir=deploy/eks-pilot show \
 ```
 
 The auditor requires one cluster, one two-node on-demand `m6i.large` node
-group, one VPC, four reviewed subnets, one NAT gateway, and one public IPv4.
+group, three EKS add-ons (`vpc-cni`, `kube-proxy`, `coredns`), one VPC, four
+reviewed subnets, one NAT gateway, and one public IPv4.
 It rejects deletion/replacement, unknown resource types, broad API access,
 drift, and nonempty managed state. It **does not** prove current prices,
 available EC2 capacity, IAM sufficiency, service health, or an AWS spending cap.

@@ -125,6 +125,7 @@ evidence of engineering judgment than a final screenshot without context.
 | [0101](0101-fail-closed-eks-preflight.md) | Fail-closed EKS local preflight | Reject nonzero default plans and unsafe rendered monitoring changes before any AWS work |
 | [0102](0102-eks-deadline-gate.md) | EKS deadline gate | Reject stale or overlong experiment windows without pretending Terraform performs teardown |
 | [0103](0103-eks-pilot-day-preparation.md) | EKS pilot day preparation | Refresh read-only account/rate inputs and stage an audited create-plan plus teardown worksheet |
+| [0104](0104-first-eks-probe-and-teardown.md) | First live EKS probe and teardown | Record `NotReady` nodes, missing add-ons, and verified manual teardown without claiming an EKS success |
 
 ## Visual language
 
