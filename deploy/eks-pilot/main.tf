@@ -150,7 +150,7 @@ module "eks" {
   endpoint_public_access_cidrs             = [var.operator_cidr]
   enable_cluster_creator_admin_permissions = true
 
-  # EKS 1.34 no longer bootstraps these self-managed components here.
+  # The pinned EKS module disables self-managed add-on bootstrap here.
   # VPC CNI must be present before managed workers can become Ready.
   addons = {
     vpc-cni = {
