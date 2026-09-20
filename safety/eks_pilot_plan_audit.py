@@ -24,6 +24,7 @@ ALLOWED_TYPES = frozenset(
         "aws_eip",
         "aws_eks_access_entry",
         "aws_eks_access_policy_association",
+        "aws_eks_addon",
         "aws_eks_cluster",
         "aws_eks_node_group",
         "aws_iam_role",
@@ -39,6 +40,7 @@ ALLOWED_TYPES = frozenset(
         "aws_vpc",
         "aws_vpc_security_group_egress_rule",
         "aws_vpc_security_group_ingress_rule",
+        "null_resource",
         "terraform_data",
         "time_sleep",
     }
@@ -46,13 +48,25 @@ ALLOWED_TYPES = frozenset(
 
 REQUIRED_COUNTS = {
     "aws_eip": 1,
+    "aws_eks_addon": 3,
     "aws_eks_cluster": 1,
     "aws_eks_node_group": 1,
     "aws_internet_gateway": 1,
     "aws_nat_gateway": 1,
     "aws_subnet": 4,
     "aws_vpc": 1,
+    "null_resource": 1,
     "terraform_data": 1,
+}
+
+EXPECTED_NULL_RESOURCE = (
+    'module.eks[0].module.eks_managed_node_group["pilot"]'
+    ".module.user_data.null_resource.validate_cluster_service_cidr"
+)
+EXPECTED_ADDON_ADDRESSES = {
+    "vpc-cni": 'module.eks[0].aws_eks_addon.before_compute["vpc-cni"]',
+    "kube-proxy": 'module.eks[0].aws_eks_addon.before_compute["kube-proxy"]',
+    "coredns": 'module.eks[0].aws_eks_addon.this["coredns"]',
 }
 
 SUBNET_CIDRS = {"10.70.0.0/20", "10.70.16.0/20", "10.70.32.0/20", "10.70.48.0/20"}
@@ -81,6 +95,18 @@ def audit_creation_plan(plan: dict[str, Any]) -> Counter[str]:
         raise EksPilotPlanError("plan must be complete, error-free, and applicable")
     if (plan.get("variables") or {}).get("enable_experiment", {}).get("value") is not True:
         raise EksPilotPlanError("plan must explicitly enable the disposable experiment")
+    module_calls = ((plan.get("configuration") or {}).get("root_module") or {}).get(
+        "module_calls"
+    ) or {}
+    vpc_dependencies = (module_calls.get("vpc") or {}).get("depends_on") or []
+    eks_tag_references = (
+        ((module_calls.get("eks") or {}).get("expressions") or {}).get("tags") or {}
+    ).get("references") or []
+    if (
+        "terraform_data.approval_gate" not in vpc_dependencies
+        or "terraform_data.approval_gate[0].id" not in eks_tag_references
+    ):
+        raise EksPilotPlanError("VPC and EKS module writes must depend on approval gate")
     if plan.get("resource_drift"):
         raise EksPilotPlanError("resource drift needs manual resolution before creation")
     prior = ((plan.get("prior_state") or {}).get("values") or {}).get("root_module") or {}
@@ -100,6 +126,8 @@ def audit_creation_plan(plan: dict[str, Any]) -> Counter[str]:
         address = item.get("address", "unknown")
         if resource_type not in ALLOWED_TYPES:
             raise EksPilotPlanError(f"unexpected managed resource type: {resource_type}")
+        if resource_type == "null_resource" and address != EXPECTED_NULL_RESOURCE:
+            raise EksPilotPlanError(f"unexpected validation null_resource: {address}")
         change = item.get("change", {})
         if change.get("actions") != ["create"] or change.get("before") is not None:
             raise EksPilotPlanError(f"not a fresh create-only plan: {address}")
@@ -163,6 +191,15 @@ def audit_creation_plan(plan: dict[str, Any]) -> Counter[str]:
     }
     if actual_subnets != SUBNET_CIDRS:
         raise EksPilotPlanError("subnet CIDRs differ from the reviewed topology")
+    addon_items = [item for item in managed if item["type"] == "aws_eks_addon"]
+    for item in addon_items:
+        addon = item["change"]["after"]
+        name = addon.get("addon_name")
+        if (
+            item["address"] != EXPECTED_ADDON_ADDRESSES.get(name)
+            or addon.get("preserve") is not False
+        ):
+            raise EksPilotPlanError("EKS managed add-ons differ from the required set")
     return counts
 
 

@@ -134,6 +134,12 @@ module "eks" {
   source  = "terraform-aws-modules/eks/aws"
   version = "21.25.0"
 
+  # Gate AWS writes through a tag input without deferring every module data
+  # source (module-wide depends_on makes nested count expressions unknown).
+  tags = {
+    PilotApprovalGate = terraform_data.approval_gate[0].id
+  }
+
   name               = var.cluster_name
   kubernetes_version = "1.34"
   vpc_id             = module.vpc[0].vpc_id
@@ -143,6 +149,22 @@ module "eks" {
   endpoint_public_access                   = true
   endpoint_public_access_cidrs             = [var.operator_cidr]
   enable_cluster_creator_admin_permissions = true
+
+  # EKS 1.34 no longer bootstraps these self-managed components here.
+  # VPC CNI must be present before managed workers can become Ready.
+  addons = {
+    vpc-cni = {
+      before_compute = true
+      preserve       = false
+    }
+    kube-proxy = {
+      before_compute = true
+      preserve       = false
+    }
+    coredns = {
+      preserve = false
+    }
+  }
 
   # The disposable compatibility pilot omits optional billable integrations.
   # Reassess control-plane logs, encryption, and IRSA for any real use.
@@ -166,8 +188,6 @@ module "eks" {
       disk_size                  = 20
     }
   }
-
-  depends_on = [terraform_data.approval_gate]
 }
 
 output "planned_cluster_name" {
