@@ -6,6 +6,9 @@ default and has no deployment authorization. It covers VPC and EKS only; the
 Prometheus/workload installation and teardown need a separate reviewed runbook.
 On 2026-09-19, the selected AWS account returned an empty EKS cluster list in
 `ap-northeast-2`. That observation says nothing about other Regions or accounts.
+The [2026-09-20 read-only preflight](eks-pilot-preflight-2026-09-20.md) refreshed
+the planned Region's version, instance offering, quotas, and public rate inputs;
+none of those checks authorizes provisioning or guarantees capacity tomorrow.
 
 ## Which claim are we trying to prove?
 

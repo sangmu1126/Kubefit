@@ -327,6 +327,7 @@ Useful references:
 - [Local development and full command reference](docs/local-development.md)
 - [EKS read-only pilot runbook](docs/eks-pilot.md)
 - [EKS validation decision gate](docs/eks-validation-plan.md)
+- [Disposable EKS pilot worksheet and create-plan audit](deploy/eks-pilot/pilot-worksheet.md)
 - [Architecture](docs/architecture.md)
 - [Implementation history](docs/devlog/README.md)
 - [Helm chart guide](deploy/helm/kubefit/README.md)

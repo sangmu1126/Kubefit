@@ -45,6 +45,11 @@ non-ephemeral Prometheus storage. It performs no AWS or Kubernetes writes. A
 PASS is **not** permission to enable the experiment, and it cannot verify AWS
 inventory, live scrape targets, capacity, rates, or teardown.
 
+On the experiment day, follow the [pilot worksheet](pilot-worksheet.md).
+An enabled binary plan can be inspected with the
+[create-plan auditor](../../safety/eks_pilot_plan_audit.py), but its PASS is only
+a structural check; every resource and current price still need human review.
+
 Before a non-default plan, complete the [decision gate](../../docs/eks-validation-plan.md):
 explicit charge approval, exact account and Region, current rate sheet,
 approved total budget and wall-clock deadline, assigned cleanup owner, current
