@@ -350,6 +350,11 @@ language decision from entry 0073: `README.md` again provides the complete Engli
 global open-source entry, while the unchanged Korean evaluator path remains available
 as `README.ko.md` through bidirectional navigation.
 
+Entry [0111](devlog/0111-korean-final-readme.md) supersedes that navigation decision
+for the final repository state: `README.md` is the current Korean entry point and
+`README.en.md` retains the English reference. Entries 0073 and 0074 remain historical
+records of earlier language decisions.
+
 Entry [0075](devlog/0075-observable-demo-walkthrough.md) makes the submission demo's
 runtime inspectable without turning it into a new benchmark campaign. Both README
 languages now connect Docker and kind status, an optional current Prometheus scrape,

@@ -132,6 +132,7 @@ evidence of engineering judgment than a final screenshot without context.
 | [0108](0108-third-eks-pilot-complete.md) | Third EKS pilot and teardown | Complete internal one-hour load, UID-verified analysis, and scoped AWS teardown without claiming bill savings |
 | [0109](0109-local-recommendation-before-after.md) | Local recommendation before/after | Pair PASS under fixed load, but record post-change CPU throttling instead of claiming overall safety |
 | [0110](0110-resource-change-throttling-gate.md) | Resource-change throttling gate | Require UID-bound post-change CPU throttling evidence; persist REVIEW_REQUIRED instead of a false safety PASS |
+| [0111](0111-korean-final-readme.md) | Final bilingual entry point | Make current Korean claims the default and keep the full English reference separately |
 
 ## Visual language
 
