@@ -2,6 +2,7 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Literal, Protocol
 
+import httpx
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from benchmarks.result import (
@@ -10,15 +11,15 @@ from benchmarks.result import (
     PROFILE_VERSION,
     BenchmarkCheck,
 )
+from collector.kubernetes import KubectlDeploymentCollector, KubernetesCollectionError
+from collector.prometheus import PrometheusClient, PrometheusError
 from gitops import ManifestTarget
 from safety.bundle import load_change_bundle
-from safety.load import ChangeTimedLoadResult
+from safety.load import ChangeThrottlingObservation, ChangeTimedLoadResult
 from safety.runner import ChangeExecutionError, ChangeManifestController
 
 ChangeExecutionOrder = Literal["before-after", "after-before"]
-CHANGE_EXECUTION_VARIANTS: dict[
-    ChangeExecutionOrder, tuple[Literal["before", "after"], ...]
-] = {
+CHANGE_EXECUTION_VARIANTS: dict[ChangeExecutionOrder, tuple[Literal["before", "after"], ...]] = {
     "before-after": ("before", "after"),
     "after-before": ("after", "before"),
 }
@@ -32,12 +33,15 @@ class ChangePerformancePolicy(BaseModel):
     error_rate_after: Decimal = Field(default=Decimal("0.01"), ge=0, le=1)
     error_rate_increase: Decimal = Field(default=Decimal("0.005"), ge=0, le=1)
     recovery_regression_percent: Decimal = Field(default=Decimal("20"), ge=0)
+    require_throttling: bool = False
+    throttling_after_percent: Decimal = Field(default=Decimal("5"), ge=0, le=100)
+    throttling_increase_percentage_points: Decimal = Field(default=Decimal("1"), ge=0, le=100)
 
 
 class ChangePerformanceVerdict(BaseModel):
     model_config = ConfigDict(frozen=True)
 
-    status: Literal["pass", "fail", "invalid"]
+    status: Literal["pass", "fail", "invalid", "review_required"]
     checks: list[BenchmarkCheck]
     failures: list[str]
     invalid_reasons: list[str]
@@ -50,6 +54,69 @@ class ChangeLoadExecutor(Protocol):
         change_id: str,
         variant: Literal["before", "after"],
     ) -> ChangeTimedLoadResult: ...
+
+
+class ThrottlingChangeLoadExecutor:
+    """Bind k6 load to current Pod UIDs and aligned Prometheus throttling."""
+
+    def __init__(
+        self,
+        load: ChangeLoadExecutor,
+        target: ManifestTarget,
+        kubernetes: KubectlDeploymentCollector,
+        prometheus: PrometheusClient,
+    ) -> None:
+        self._load = load
+        self._target = target
+        self._kubernetes = kubernetes
+        self._prometheus = prometheus
+
+    def run(self, change_id: str, variant: Literal["before", "after"]) -> ChangeTimedLoadResult:
+        try:
+            before = self._kubernetes.collect(
+                self._target.namespace, self._target.deployment, self._target.container
+            )
+        except KubernetesCollectionError as exc:
+            result = self._load.run(change_id, variant)
+            reason = f"Kubernetes snapshot unavailable: {type(exc).__name__}"
+            return result.model_copy(update={"throttling_unavailable_reason": reason})
+
+        result = self._load.run(change_id, variant)
+        try:
+            after = self._kubernetes.collect(
+                self._target.namespace, self._target.deployment, self._target.container
+            )
+            if (
+                not before.pod_uids
+                or set(before.pod_uids) != set(before.pods)
+                or len(before.pods) != before.desired_replicas
+                or before.container_status_count != len(before.pods)
+                or before.pod_uids != after.pod_uids
+                or before.uid != after.uid
+                or before.restart_count != after.restart_count
+                or before.oom_killed_count != after.oom_killed_count
+            ):
+                raise PrometheusError("Pod identities or runtime counters changed during load")
+            self._prometheus.verify_pod_uids(self._target.namespace, before.pod_uids)
+            throttling = self._prometheus.benchmark_cpu_throttling_p95(
+                namespace=self._target.namespace,
+                pods=sorted(before.pod_uids),
+                container=self._target.container,
+                start=result.started_at,
+                end=result.finished_at,
+                require_all_pods=True,
+            )
+        except (KubernetesCollectionError, PrometheusError, httpx.HTTPError) as exc:
+            reason = f"throttling observation unavailable: {type(exc).__name__}"
+            return result.model_copy(update={"throttling_unavailable_reason": reason})
+        return result.model_copy(
+            update={
+                "throttling_observation": ChangeThrottlingObservation(
+                    p95_percent=throttling,
+                    pod_uids=before.pod_uids,
+                )
+            }
+        )
 
 
 class ChangePerformanceRun(BaseModel):
@@ -166,10 +233,61 @@ def compare_change_performance(
             policy.recovery_regression_percent,
         )
     )
+    review_required = False
+    if policy.require_throttling:
+        baseline_throttling = before.throttling_observation
+        candidate_throttling = after.throttling_observation
+        if baseline_throttling is None or candidate_throttling is None:
+            missing = []
+            for label, measurement in (("base", before), ("candidate", after)):
+                if measurement.throttling_observation is None:
+                    reason = measurement.throttling_unavailable_reason or "no throttling evidence"
+                    missing.append(f"{label}: {reason}")
+            checks.append(
+                BenchmarkCheck(
+                    code="throttling_observation",
+                    status="warning",
+                    reason="CPU throttling needs review; " + "; ".join(missing),
+                )
+            )
+            review_required = True
+        else:
+            checks.append(
+                BenchmarkCheck(
+                    code="throttling_observation",
+                    status="pass",
+                    reason="both variants have current-Pod UID-bound throttling samples",
+                )
+            )
+            observed_after = Decimal(str(candidate_throttling.p95_percent))
+            observed_increase = observed_after - Decimal(str(baseline_throttling.p95_percent))
+            for code, label, value, maximum in (
+                (
+                    "throttling_after",
+                    "candidate CPU throttling P95",
+                    observed_after,
+                    policy.throttling_after_percent,
+                ),
+                (
+                    "throttling_increase",
+                    "CPU throttling P95 increase",
+                    observed_increase,
+                    policy.throttling_increase_percentage_points,
+                ),
+            ):
+                exceeded = value > maximum
+                checks.append(
+                    BenchmarkCheck(
+                        code=code,
+                        status="warning" if exceeded else "pass",
+                        reason=f"{label} is {value}% (review threshold: {maximum}%)",
+                    )
+                )
+                review_required |= exceeded
     failures = [check.reason for check in checks if check.status == "fail"]
     warnings = [check.reason for check in checks if check.status == "warning"]
     return ChangePerformanceVerdict(
-        status="fail" if failures else "pass",
+        status="fail" if failures else "review_required" if review_required else "pass",
         checks=checks,
         failures=failures,
         invalid_reasons=[],
@@ -238,6 +356,8 @@ def execute_change_performance(
     after = measurements.get("after")
     assert before is not None and after is not None
     selected_policy = policy or ChangePerformancePolicy()
+    if any("/resources/" in item.path for item in bundle.change.supported_changes):
+        selected_policy = selected_policy.model_copy(update={"require_throttling": True})
     return ChangePerformanceRun(
         change_id=bundle.artifact_id,
         target=target,

@@ -22,7 +22,7 @@ class ChangePerformancePairTrial(BaseModel):
     artifact_id: str = Field(pattern=r"^change-performance-[0-9a-f]{32}$")
     change_id: str = Field(pattern=r"^change-[0-9a-f]{32}$")
     execution_order: Literal["before-after", "after-before"]
-    verdict_status: Literal["pass", "fail", "invalid"]
+    verdict_status: Literal["pass", "fail", "invalid", "review_required"]
     policy_check_statuses: dict[str, Literal["pass", "fail", "invalid", "warning"]]
 
 
@@ -40,7 +40,7 @@ class ChangePerformancePairAssessment(BaseModel):
     schema_version: Literal[1] = 1
     assessment_id: str = Field(pattern=r"^change-performance-pair-[0-9a-f]{32}$")
     change_id: str | None = Field(default=None, pattern=r"^change-[0-9a-f]{32}$")
-    status: Literal["pass", "fail", "invalid"]
+    status: Literal["pass", "fail", "invalid", "review_required"]
     trials: list[ChangePerformancePairTrial] = Field(min_length=2, max_length=2)
     checks: list[ChangePerformancePairCheck]
     failures: list[str]
@@ -92,10 +92,12 @@ def assess_loaded_change_performance_pair(
         )
 
     policy_agrees = trials[0].policy_check_statuses == trials[1].policy_check_statuses
+    needs_review = any(trial.verdict_status == "review_required" for trial in trials)
+    disagreement_status = "warning" if needs_review else "fail"
     checks.append(
         ChangePerformancePairCheck(
             code="policy_check_agreement",
-            status="pass" if policy_agrees else "fail",
+            status="pass" if policy_agrees else disagreement_status,
             reason=(
                 "both orders produced identical non-order policy check statuses"
                 if policy_agrees
@@ -104,10 +106,11 @@ def assess_loaded_change_performance_pair(
         )
     )
     both_pass = all(trial.verdict_status == "pass" for trial in trials)
+    any_failed = any(trial.verdict_status in {"fail", "invalid"} for trial in trials)
     checks.append(
         ChangePerformancePairCheck(
             code="both_trials_pass",
-            status="pass" if both_pass else "fail",
+            status="pass" if both_pass else "fail" if any_failed else "warning",
             reason=(
                 "both opposite-order generic performance verdicts passed"
                 if both_pass
@@ -118,7 +121,7 @@ def assess_loaded_change_performance_pair(
     failures = [check.reason for check in checks if check.status == "fail"]
     return _assessment(
         change_id=change_id,
-        status="fail" if failures else "pass",
+        status="fail" if failures else "review_required" if needs_review else "pass",
         trials=trials,
         checks=checks,
         failures=failures,
@@ -163,8 +166,7 @@ def _input_checks(
         ),
         (
             "opposite_orders",
-            {trial.execution_order for trial in trials}
-            == {"before-after", "after-before"},
+            {trial.execution_order for trial in trials} == {"before-after", "after-before"},
             "counterbalanced trials must contain exactly one run in each order",
         ),
         (
@@ -197,7 +199,7 @@ def _input_checks(
 def _assessment(
     *,
     change_id: str | None,
-    status: Literal["pass", "fail", "invalid"],
+    status: Literal["pass", "fail", "invalid", "review_required"],
     trials: list[ChangePerformancePairTrial],
     checks: list[ChangePerformancePairCheck],
     failures: list[str],

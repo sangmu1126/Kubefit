@@ -6,6 +6,7 @@ import pytest
 from gitops import ManifestTarget
 from safety import (
     ChangePerformanceArtifactError,
+    ChangePerformancePolicy,
     ChangePerformanceRun,
     compare_change_performance,
     load_change_performance_artifact,
@@ -58,6 +59,27 @@ def test_persists_failed_verdict_as_replayable_evidence(tmp_path: Path) -> None:
 
     assert artifact.status == "fail"
     assert loaded.run.verdict.status == "fail"
+
+
+def test_persists_missing_throttling_as_replayable_review(tmp_path: Path) -> None:
+    before = load_result("before")
+    after = load_result("after")
+    policy = ChangePerformancePolicy(require_throttling=True)
+    run = ChangePerformanceRun(
+        change_id=CHANGE_ID,
+        target=ManifestTarget(namespace="demo", deployment="api", container="api"),
+        before=before,
+        after=after,
+        policy=policy,
+        verdict=compare_change_performance(before, after, policy),
+    )
+
+    artifact = write_change_performance_artifact(tmp_path / "results", run)
+    loaded = load_change_performance_artifact(artifact.path)
+
+    assert artifact.status == "review_required"
+    assert loaded.run.verdict.status == "review_required"
+    assert "unavailable" in loaded.report_path.read_text()
 
 
 def test_reloads_reverse_execution_order_from_measurement_times(tmp_path: Path) -> None:

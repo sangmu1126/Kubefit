@@ -144,6 +144,60 @@ def test_rejects_benchmark_window_shorter_than_rate_window() -> None:
         )
 
 
+def test_strict_benchmark_throttling_rejects_missing_pod_series() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "status": "success",
+                "data": {
+                    "result": [
+                        {"metric": {"pod": "api-a"}, "values": [[1, "0"], [2, "0"], [3, "0"]]}
+                    ]
+                },
+            },
+        )
+
+    http = httpx.Client(base_url="http://prometheus", transport=httpx.MockTransport(handler))
+    start = datetime(2026, 8, 21, tzinfo=UTC)
+    with pytest.raises(PrometheusError, match="every benchmark Pod"):
+        PrometheusClient("http://prometheus", client=http).benchmark_cpu_throttling_p95(
+            namespace="demo",
+            pods=["api-a", "api-b"],
+            container="api",
+            start=start,
+            end=start + timedelta(seconds=160),
+            require_all_pods=True,
+        )
+
+
+def test_strict_benchmark_throttling_rejects_sparse_pod_series() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "status": "success",
+                "data": {
+                    "result": [
+                        {"metric": {"pod": "api-a"}, "values": [[1, "0"], [2, "0"], [3, "0"]]}
+                    ]
+                },
+            },
+        )
+
+    http = httpx.Client(base_url="http://prometheus", transport=httpx.MockTransport(handler))
+    start = datetime(2026, 8, 21, tzinfo=UTC)
+    with pytest.raises(PrometheusError, match="every benchmark Pod"):
+        PrometheusClient("http://prometheus", client=http).benchmark_cpu_throttling_p95(
+            namespace="demo",
+            pods=["api-a"],
+            container="api",
+            start=start,
+            end=start + timedelta(seconds=160),
+            require_all_pods=True,
+        )
+
+
 def test_rejects_invalid_observation_window() -> None:
     with pytest.raises(ValueError, match="positive"):
         PrometheusClient("http://prometheus").workload_metrics(

@@ -76,6 +76,13 @@ def validate_podkill_prerequisites(
         raise PodKillArtifactError("PodKill requires a passing performance Pair")
     if pair.change_id != change.artifact_id:
         raise PodKillArtifactError("change and performance Pair identities do not match")
+    if any("/resources/" in item.path for item in change.change.supported_changes) and not all(
+        trial.run.policy.require_throttling
+        for trial in (pair.before_after, pair.after_before)
+    ):
+        raise PodKillArtifactError(
+            "resource-change Pair lacks required post-change throttling evidence"
+        )
     expected = pair.before_after.run.target
     if pair.after_before.run.target != expected or target != expected:
         raise PodKillArtifactError("PodKill target does not match performance Pair target")

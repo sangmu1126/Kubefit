@@ -177,6 +177,47 @@ def test_rejects_failed_performance_pair_before_creating_output(
     assert not output.exists()
 
 
+def test_rejects_legacy_performance_only_pair_for_resource_change(tmp_path: Path) -> None:
+    base = tmp_path / "resource-base.yaml"
+    candidate = tmp_path / "resource-candidate.yaml"
+    base.write_text(BASE)
+    candidate.write_text(BASE.replace("cpu: 1000m", "cpu: 20m"))
+    resource_change = write_change_bundle(
+        tmp_path / "resource-changes",
+        base,
+        candidate,
+        namespace="demo",
+        deployment="api",
+    )
+    # Reuse the old performance-only measurement shape, but bind it to this
+    # resource change to prove the downstream gate does not trust its PASS.
+    runs = []
+    for reverse in (False, True):
+        before = load_result(
+            "before", change_id=resource_change.artifact_id, minute=5 if reverse else 0
+        )
+        after = load_result(
+            "after", change_id=resource_change.artifact_id, minute=0 if reverse else 5
+        )
+        run = ChangePerformanceRun(
+            change_id=resource_change.artifact_id,
+            target=TARGET,
+            execution_order="after-before" if reverse else "before-after",
+            before=before,
+            after=after,
+            verdict=compare_change_performance(before, after),
+        )
+        runs.append(write_change_performance_artifact(tmp_path / "legacy-results", run))
+    legacy_pair = write_change_performance_pair(
+        tmp_path / "legacy-pairs", runs[0].path, runs[1].path
+    )
+
+    with pytest.raises(PodKillArtifactError, match="lacks required post-change throttling"):
+        write_podkill_artifact(
+            tmp_path / "podkills", resource_change.path, legacy_pair.path, podkill_result()
+        )
+
+
 def test_rejects_target_not_bound_to_performance_pair(tmp_path: Path) -> None:
     change, pair = prerequisites(tmp_path)
     result = podkill_result()

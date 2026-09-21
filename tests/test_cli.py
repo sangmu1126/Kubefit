@@ -728,7 +728,10 @@ def test_execute_change_rejects_non_kind_context() -> None:
         )
 
 
-@pytest.mark.parametrize(("status", "exit_code"), [("pass", None), ("fail", 2)])
+@pytest.mark.parametrize(
+    ("status", "exit_code"),
+    [("pass", None), ("fail", 2), ("review_required", 2)],
+)
 def test_benchmark_change_persists_verdict_inside_target_lock(
     status: str,
     exit_code: int | None,
@@ -848,7 +851,12 @@ def test_benchmark_change_rejects_non_kind_context() -> None:
 
 @pytest.mark.parametrize(
     ("status", "persisted", "exit_code"),
-    [("pass", True, None), ("fail", True, 2), ("invalid", False, 2)],
+    [
+        ("pass", True, None),
+        ("fail", True, 2),
+        ("review_required", True, 2),
+        ("invalid", False, 2),
+    ],
 )
 def test_benchmark_change_pair_preserves_fail_but_not_invalid(
     status: str,

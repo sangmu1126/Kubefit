@@ -10,7 +10,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from gitops import ManifestTarget
-from safety.load import ChangeK6RunSummary, ChangeTimedLoadResult
+from safety.load import ChangeK6RunSummary, ChangeThrottlingObservation, ChangeTimedLoadResult
 from safety.performance import (
     ChangePerformancePolicy,
     ChangePerformanceRun,
@@ -50,6 +50,8 @@ class ChangeLoadRecord(BaseModel):
     traffic_spike_recovered: bool
     summary_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     raw_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    throttling_observation: ChangeThrottlingObservation | None = None
+    throttling_unavailable_reason: str | None = None
 
     @model_validator(mode="after")
     def timestamps_are_ordered(self) -> "ChangeLoadRecord":
@@ -65,7 +67,7 @@ class ChangePerformanceArtifact(BaseModel):
 
     artifact_id: str = Field(pattern=r"^change-performance-[0-9a-f]{32}$")
     change_id: str = Field(pattern=r"^change-[0-9a-f]{32}$")
-    status: Literal["pass", "fail", "invalid"]
+    status: Literal["pass", "fail", "invalid", "review_required"]
     path: Path
     reused: bool
     files: list[str]
@@ -167,9 +169,7 @@ def load_change_performance_artifact(path: Path) -> LoadedChangePerformanceArtif
         raise ChangePerformanceArtifactError("performance artifact index is not canonical")
     if path.name != index.artifact_id:
         raise ChangePerformanceArtifactError("performance directory does not match artifact ID")
-    if index.content_digest_sha256[:32] != index.artifact_id.removeprefix(
-        "change-performance-"
-    ):
+    if index.content_digest_sha256[:32] != index.artifact_id.removeprefix("change-performance-"):
         raise ChangePerformanceArtifactError("performance artifact ID does not match digest")
     if set(index.files) != PAYLOAD_PATHS:
         raise ChangePerformanceArtifactError("performance artifact payload set is invalid")
@@ -246,6 +246,8 @@ def _record(load: ChangeTimedLoadResult) -> ChangeLoadRecord:
         traffic_spike_recovered=load.traffic_spike_recovered,
         summary_sha256=load.summary_sha256,
         raw_sha256=load.raw_sha256,
+        throttling_observation=load.throttling_observation,
+        throttling_unavailable_reason=load.throttling_unavailable_reason,
     )
 
 
@@ -265,6 +267,8 @@ def _restore_load(variant: Literal["before", "after"], payloads: dict[str, bytes
         traffic_spike_recovered=record.traffic_spike_recovered,
         summary_content=summary_content,
         raw_content=raw_content,
+        throttling_observation=record.throttling_observation,
+        throttling_unavailable_reason=record.throttling_unavailable_reason,
     )
 
 
@@ -272,12 +276,8 @@ def _payloads(run: ChangePerformanceRun) -> dict[str, bytes]:
     return {
         "target.json": _canonical_json(run.target.model_dump(mode="json")),
         "policy.json": _canonical_json(run.policy.model_dump(mode="json")),
-        "measurements/before.json": _canonical_json(
-            _record(run.before).model_dump(mode="json")
-        ),
-        "measurements/after.json": _canonical_json(
-            _record(run.after).model_dump(mode="json")
-        ),
+        "measurements/before.json": _canonical_json(_record(run.before).model_dump(mode="json")),
+        "measurements/after.json": _canonical_json(_record(run.after).model_dump(mode="json")),
         "evidence/k6/before-summary.json": run.before.summary_content,
         "evidence/k6/before-raw.json": run.before.raw_content,
         "evidence/k6/after-summary.json": run.after.summary_content,
@@ -290,47 +290,69 @@ def _payloads(run: ChangePerformanceRun) -> dict[str, bytes]:
 def _render_report(run: ChangePerformanceRun) -> str:
     before = run.before
     after = run.after
-    return "\n".join(
-        [
-            "# Generic change performance result",
-            "",
-            f"- Change: `{run.change_id}`",
-            f"- Target: `{run.target.namespace}/{run.target.deployment}:{run.target.container}`",
-            f"- Verdict: **{run.verdict.status.upper()}**",
-            "- Base restored: **yes**",
-            "",
-            "| Metric | Base | Candidate |",
-            "|---|---:|---:|",
-            _report_row(
-                "Steady P95 ms",
-                before.summary.steady.latency_p95_ms,
-                after.summary.steady.latency_p95_ms,
-            ),
-            _report_row(
-                "Steady P99 ms",
-                before.summary.steady.latency_p99_ms,
-                after.summary.steady.latency_p99_ms,
-            ),
-            _report_row(
-                "Spike P95 ms",
-                before.summary.spike.latency_p95_ms,
-                after.summary.spike.latency_p95_ms,
-            ),
-            _report_row(
-                "Spike P99 ms",
-                before.summary.spike.latency_p99_ms,
-                after.summary.spike.latency_p99_ms,
-            ),
-            _report_row(
-                "Recovery seconds",
-                before.traffic_spike_recovery_seconds,
-                after.traffic_spike_recovery_seconds,
-            ),
-            "",
-            "This verdict excludes cost, Prometheus throttling, OOM, and fault injection.",
-            "",
-        ]
-    )
+    lines = [
+        "# Generic change performance result",
+        "",
+        f"- Change: `{run.change_id}`",
+        f"- Target: `{run.target.namespace}/{run.target.deployment}:{run.target.container}`",
+        f"- Verdict: **{run.verdict.status.upper()}**",
+        "- Base restored: **yes**",
+        "",
+        "| Metric | Base | Candidate |",
+        "|---|---:|---:|",
+        _report_row(
+            "Steady P95 ms",
+            before.summary.steady.latency_p95_ms,
+            after.summary.steady.latency_p95_ms,
+        ),
+        _report_row(
+            "Steady P99 ms",
+            before.summary.steady.latency_p99_ms,
+            after.summary.steady.latency_p99_ms,
+        ),
+        _report_row(
+            "Spike P95 ms",
+            before.summary.spike.latency_p95_ms,
+            after.summary.spike.latency_p95_ms,
+        ),
+        _report_row(
+            "Spike P99 ms",
+            before.summary.spike.latency_p99_ms,
+            after.summary.spike.latency_p99_ms,
+        ),
+        _report_row(
+            "Recovery seconds",
+            before.traffic_spike_recovery_seconds,
+            after.traffic_spike_recovery_seconds,
+        ),
+        "",
+    ]
+    if run.policy.require_throttling:
+        lines.extend(
+            [
+                _report_row(
+                    "CPU throttling P95 (%)",
+                    _throttling_value(before),
+                    _throttling_value(after),
+                ),
+                "",
+                "Resource-change throttling is required; missing or increased evidence "
+                "means REVIEW_REQUIRED. Cost, OOM, and fault injection remain "
+                "outside this verdict.",
+                "",
+            ]
+        )
+    else:
+        lines.extend(
+            ["This verdict excludes cost, Prometheus throttling, OOM, and fault injection.", ""]
+        )
+    return "\n".join(lines)
+
+
+def _throttling_value(load: ChangeTimedLoadResult) -> object:
+    if load.throttling_observation is None:
+        return "unavailable"
+    return load.throttling_observation.p95_percent
 
 
 def _report_row(label: str, before: object, after: object) -> str:
@@ -340,7 +362,7 @@ def _report_row(label: str, before: object, after: object) -> str:
 def _artifact(
     index: ChangePerformanceIndex,
     path: Path,
-    status: Literal["pass", "fail", "invalid"],
+    status: Literal["pass", "fail", "invalid", "review_required"],
     reused: bool,
 ) -> ChangePerformanceArtifact:
     return ChangePerformanceArtifact(

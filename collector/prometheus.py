@@ -173,6 +173,7 @@ class PrometheusClient:
         end: datetime,
         step_seconds: int = 5,
         rate_window_seconds: int = 30,
+        require_all_pods: bool = False,
     ) -> float:
         if not pods:
             raise ValueError("at least one benchmark Pod is required")
@@ -205,6 +206,13 @@ class PrometheusClient:
         if not series:
             raise PrometheusError("Prometheus returned no throttling samples for benchmark")
         series_by_pod = _series_by_pod(series, "benchmark CPU throttling")
+        expected_samples = math.floor((end - query_start).total_seconds() / step_seconds) + 1
+        required_samples = max(3, math.ceil(expected_samples * 0.8))
+        if require_all_pods and (
+            set(series_by_pod) != set(pods)
+            or any(len(item.values) < required_samples for item in series_by_pod.values())
+        ):
+            raise PrometheusError("Prometheus throttling samples do not cover every benchmark Pod")
         return max(percentile(item.values, 0.95) for item in series_by_pod.values())
 
     def workload_metrics(

@@ -31,6 +31,20 @@ class ChangeK6RunSummary(BaseModel):
     recovery: LoadPhaseMetrics
 
 
+class ChangeThrottlingObservation(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    p95_percent: float = Field(ge=0, le=100)
+    pod_uids: dict[str, str] = Field(min_length=1)
+    rate_window_seconds: int = Field(default=30, gt=0)
+
+    @model_validator(mode="after")
+    def pod_identities_are_complete(self) -> "ChangeThrottlingObservation":
+        if any(not pod or not uid for pod, uid in self.pod_uids.items()):
+            raise ValueError("throttling observation requires complete Pod identities")
+        return self
+
+
 class ChangeTimedLoadResult(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -41,6 +55,8 @@ class ChangeTimedLoadResult(BaseModel):
     traffic_spike_recovered: bool
     summary_content: bytes
     raw_content: bytes
+    throttling_observation: ChangeThrottlingObservation | None = None
+    throttling_unavailable_reason: str | None = None
 
     @model_validator(mode="after")
     def evidence_is_consistent(self) -> "ChangeTimedLoadResult":
@@ -54,6 +70,8 @@ class ChangeTimedLoadResult(BaseModel):
             raise ValueError("change load summary content is invalid") from exc
         if persisted != self.summary:
             raise ValueError("change load summary content conflicts with parsed summary")
+        if self.throttling_observation is not None and self.throttling_unavailable_reason:
+            raise ValueError("throttling evidence cannot also be unavailable")
         return self
 
     @property

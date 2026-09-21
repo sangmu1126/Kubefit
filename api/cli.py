@@ -64,6 +64,7 @@ from safety import (
     KubectlPodKillPreflight,
     PodKillExperimentRunner,
     SubprocessChangeK6Executor,
+    ThrottlingChangeLoadExecutor,
     assess_change_performance_pair,
     assess_podkill_campaign,
     execute_change_bundle,
@@ -265,6 +266,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     benchmark_change.add_argument("--change", required=True, type=Path)
     benchmark_change.add_argument("--target-url", required=True)
+    benchmark_change.add_argument("--prometheus-url", default="http://localhost:9090")
     benchmark_change.add_argument("--context", required=True)
     benchmark_change.add_argument("--container", required=True)
     benchmark_change.add_argument(
@@ -902,6 +904,20 @@ def _run_benchmark_change(args: argparse.Namespace) -> None:
         script_path=args.k6_script,
         timeout_seconds=args.k6_timeout_seconds,
     )
+    if any(
+        "/resources/" in item.path
+        for item in getattr(change.change, "supported_changes", [])
+    ):
+        load = ThrottlingChangeLoadExecutor(
+            load=load,
+            target=ManifestTarget(
+                namespace=change.change.namespace,
+                deployment=change.change.deployment,
+                container=args.container,
+            ),
+            kubernetes=KubectlDeploymentCollector(context=args.context),
+            prometheus=PrometheusClient(args.prometheus_url),
+        )
     with BenchmarkExecutionLock(
         root=args.lock_dir,
         context=args.context,

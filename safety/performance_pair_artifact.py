@@ -35,7 +35,7 @@ class ChangePerformancePairIndex(BaseModel):
     schema_version: Literal[1] = 1
     artifact_id: str = Field(pattern=r"^change-performance-pair-[0-9a-f]{32}$")
     change_id: str = Field(pattern=r"^change-[0-9a-f]{32}$")
-    status: Literal["pass", "fail"]
+    status: Literal["pass", "fail", "review_required"]
     trial_ids: list[str] = Field(min_length=2, max_length=2)
     content_digest_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     files: dict[str, ChangePerformancePairFileMetadata]
@@ -46,7 +46,7 @@ class ChangePerformancePairArtifact(BaseModel):
 
     artifact_id: str = Field(pattern=r"^change-performance-pair-[0-9a-f]{32}$")
     change_id: str = Field(pattern=r"^change-[0-9a-f]{32}$")
-    status: Literal["pass", "fail"]
+    status: Literal["pass", "fail", "review_required"]
     trial_ids: list[str] = Field(min_length=2, max_length=2)
     path: Path
     reused: bool

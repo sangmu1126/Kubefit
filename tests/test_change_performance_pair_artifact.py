@@ -2,11 +2,17 @@ from pathlib import Path
 
 import pytest
 
+from gitops import ManifestTarget
 from safety import (
     ChangePerformancePairArtifactError,
+    ChangePerformancePolicy,
+    ChangePerformanceRun,
+    compare_change_performance,
     load_change_performance_pair,
+    write_change_performance_artifact,
     write_change_performance_pair,
 )
+from tests.test_change_performance import CHANGE_ID, load_result
 from tests.test_change_performance_pair import published_pair
 
 
@@ -35,6 +41,30 @@ def test_persists_failed_pair_instead_of_hiding_failed_trial(tmp_path: Path) -> 
     assert artifact.status == "fail"
     assert loaded.assessment.status == "fail"
     assert loaded.assessment.failures
+
+
+def test_persists_review_required_pair_without_promoting_it_to_pass(tmp_path: Path) -> None:
+    trials = []
+    policy = ChangePerformancePolicy(require_throttling=True)
+    for reverse in (False, True):
+        before = load_result("before", minute=5 if reverse else 0)
+        after = load_result("after", minute=0 if reverse else 5)
+        run = ChangePerformanceRun(
+            change_id=CHANGE_ID,
+            target=ManifestTarget(namespace="demo", deployment="api", container="api"),
+            execution_order="after-before" if reverse else "before-after",
+            before=before,
+            after=after,
+            policy=policy,
+            verdict=compare_change_performance(before, after, policy),
+        )
+        trials.append(write_change_performance_artifact(tmp_path / "results", run))
+
+    pair = write_change_performance_pair(tmp_path / "pairs", trials[0].path, trials[1].path)
+    loaded = load_change_performance_pair(pair.path)
+
+    assert pair.status == "review_required"
+    assert loaded.assessment.status == "review_required"
 
 
 def test_rejects_invalid_pair_without_creating_output(tmp_path: Path) -> None:

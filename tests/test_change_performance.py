@@ -1,14 +1,18 @@
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
+from collector.prometheus import PrometheusError
 from safety import (
     ChangeExecutionError,
     ChangeK6RunSummary,
     ChangePerformancePolicy,
+    ChangeThrottlingObservation,
     ChangeTimedLoadResult,
+    ThrottlingChangeLoadExecutor,
     compare_change_performance,
     execute_change_performance,
     write_change_bundle,
@@ -74,6 +78,149 @@ def test_passes_comparable_fixed_load_without_cost_or_runtime_claims() -> None:
     assert not any("throttling" in check.code for check in verdict.checks)
 
 
+def _observed(variant: str, percent: float, *, minute: int | None = None):
+    return load_result(variant, minute=minute).model_copy(
+        update={
+            "throttling_observation": ChangeThrottlingObservation(
+                p95_percent=percent,
+                pod_uids={f"api-{variant}": f"uid-{variant}"},
+            )
+        }
+    )
+
+
+def test_resource_throttling_requires_review_when_candidate_increases() -> None:
+    verdict = compare_change_performance(
+        _observed("before", 0),
+        _observed("after", 7.8),
+        ChangePerformancePolicy(require_throttling=True),
+    )
+
+    assert verdict.status == "review_required"
+    assert check_status(verdict, "throttling_after") == "warning"
+    assert check_status(verdict, "throttling_increase") == "warning"
+
+
+def test_resource_throttling_missing_is_not_a_safety_pass() -> None:
+    verdict = compare_change_performance(
+        load_result("before"),
+        load_result("after"),
+        ChangePerformancePolicy(require_throttling=True),
+    )
+
+    assert verdict.status == "review_required"
+    assert check_status(verdict, "throttling_observation") == "warning"
+
+
+def test_resource_throttling_below_both_thresholds_can_pass() -> None:
+    verdict = compare_change_performance(
+        _observed("before", 0.5),
+        _observed("after", 1),
+        ChangePerformancePolicy(require_throttling=True),
+    )
+
+    assert verdict.status == "pass"
+    assert check_status(verdict, "throttling_after") == "pass"
+    assert check_status(verdict, "throttling_increase") == "pass"
+
+
+class FakeKubernetes:
+    def __init__(self, *, changed_uid: bool = False):
+        self.calls = 0
+        self.changed_uid = changed_uid
+
+    def collect(self, namespace, deployment, container):
+        self.calls += 1
+        uid = "changed" if self.changed_uid and self.calls == 2 else "pod-uid"
+        return SimpleNamespace(
+            uid="deployment-uid",
+            pods=["api-a"],
+            pod_uids={"api-a": uid},
+            desired_replicas=1,
+            container_status_count=1,
+            restart_count=0,
+            oom_killed_count=0,
+        )
+
+
+class FakePrometheus:
+    def __init__(self, value: float):
+        self.value = value
+        self.calls: list[object] = []
+
+    def verify_pod_uids(self, namespace, pod_uids):
+        self.calls.append((namespace, pod_uids))
+
+    def benchmark_cpu_throttling_p95(self, **kwargs):
+        self.calls.append(kwargs)
+        return self.value
+
+
+def test_collector_binds_current_pods_and_aligned_window() -> None:
+    class Load:
+        def run(self, change_id, variant):
+            return load_result(variant, change_id=change_id)
+
+    prometheus = FakePrometheus(7.8)
+    observer = ThrottlingChangeLoadExecutor(
+        Load(),
+        SimpleNamespace(namespace="demo", deployment="api", container="api"),
+        FakeKubernetes(),
+        prometheus,
+    )
+
+    result = observer.run(CHANGE_ID, "after")
+
+    assert result.throttling_observation is not None
+    assert result.throttling_observation.p95_percent == 7.8
+    assert result.throttling_observation.pod_uids == {"api-a": "pod-uid"}
+    assert prometheus.calls[1]["start"] == result.started_at
+    assert prometheus.calls[1]["end"] == result.finished_at
+    assert prometheus.calls[1]["require_all_pods"] is True
+
+
+def test_collector_marks_changed_pod_uid_unavailable() -> None:
+    class Load:
+        def run(self, change_id, variant):
+            return load_result(variant, change_id=change_id)
+
+    prometheus = FakePrometheus(0)
+    observer = ThrottlingChangeLoadExecutor(
+        Load(),
+        SimpleNamespace(namespace="demo", deployment="api", container="api"),
+        FakeKubernetes(changed_uid=True),
+        prometheus,
+    )
+
+    result = observer.run(CHANGE_ID, "after")
+
+    assert result.throttling_observation is None
+    assert result.throttling_unavailable_reason
+    assert not prometheus.calls
+
+
+def test_collector_marks_missing_prometheus_metrics_unavailable() -> None:
+    class Load:
+        def run(self, change_id, variant):
+            return load_result(variant, change_id=change_id)
+
+    class MissingPrometheus(FakePrometheus):
+        def benchmark_cpu_throttling_p95(self, **kwargs):
+            raise PrometheusError("missing one Pod series")
+
+    observer = ThrottlingChangeLoadExecutor(
+        Load(),
+        SimpleNamespace(namespace="demo", deployment="api", container="api"),
+        FakeKubernetes(),
+        MissingPrometheus(0),
+    )
+
+    result = observer.run(CHANGE_ID, "after")
+
+    assert result.throttling_observation is None
+    assert "PrometheusError" in result.throttling_unavailable_reason
+
+
 def test_fails_latency_regression_and_missing_candidate_recovery() -> None:
     verdict = compare_change_performance(
         load_result("before"),
@@ -135,6 +282,34 @@ def _bundle(tmp_path: Path) -> Path:
         namespace="demo",
         deployment="api",
     ).path
+
+
+def _resource_bundle(tmp_path: Path) -> Path:
+    base = tmp_path / "base.yaml"
+    candidate = tmp_path / "candidate.yaml"
+    base.write_text(BASE)
+    candidate.write_text(BASE.replace("cpu: 1000m", "cpu: 20m"))
+    return write_change_bundle(
+        tmp_path / "changes",
+        base,
+        candidate,
+        namespace="demo",
+        deployment="api",
+    ).path
+
+
+def test_resource_change_requires_throttling_even_if_caller_omits_policy(tmp_path: Path) -> None:
+    controller = RecordingController()
+    result = execute_change_performance(
+        _resource_bundle(tmp_path),
+        controller,
+        RecordingLoad(controller.events),
+        container="api",
+    )
+
+    assert result.policy.require_throttling is True
+    assert result.verdict.status == "review_required"
+    assert result.restored is True
 
 
 class RecordingController:

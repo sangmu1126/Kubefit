@@ -25,6 +25,7 @@ from safety.gate import (
 from safety.load import (
     ChangeK6RunSummary,
     ChangeLoadError,
+    ChangeThrottlingObservation,
     ChangeTimedLoadResult,
     SubprocessChangeK6Executor,
 )
@@ -35,6 +36,7 @@ from safety.performance import (
     ChangePerformancePolicy,
     ChangePerformanceRun,
     ChangePerformanceVerdict,
+    ThrottlingChangeLoadExecutor,
     change_measurement_order,
     compare_change_performance,
     execute_change_performance,
@@ -132,6 +134,7 @@ __all__ = [
     "ChangeExecutionResult",
     "ChangeK6RunSummary",
     "ChangeLoadError",
+    "ChangeThrottlingObservation",
     "ChangeLoadExecutor",
     "ChangeLoadRecord",
     "ChangeManifestController",
@@ -150,6 +153,7 @@ __all__ = [
     "ChangePerformancePairIndex",
     "ChangePerformancePairTrial",
     "ChangePerformanceVerdict",
+    "ThrottlingChangeLoadExecutor",
     "ChangeTimedLoadResult",
     "FieldChange",
     "LoadedChangeBundle",
