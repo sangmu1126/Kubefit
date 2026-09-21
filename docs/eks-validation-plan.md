@@ -9,6 +9,9 @@ and metrics but did not complete a valid one-hour load/recommendation. A
 completed the fixed one-hour in-cluster load, UID-verified readiness, and an
 illustrative read-only recommendation, then tore down all experiment resources.
 It did not apply the recommendation or prove actual AWS savings.
+A separate [local before/after experiment](devlog/0109-local-recommendation-before-after.md)
+later passed the fixed performance Pair but observed CPU throttling with the
+candidate's 20m limit; it is not proof that the recommendation is safe for EKS.
 The [disposable Terraform draft](../deploy/eks-pilot/README.md) is disabled by
 default and has no deployment authorization. It covers VPC and EKS only; the
 Prometheus/workload installation and teardown need a separate reviewed runbook.
