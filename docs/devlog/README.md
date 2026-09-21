@@ -129,6 +129,7 @@ evidence of engineering judgment than a final screenshot without context.
 | [0105](0105-second-eks-pilot.md) | Second EKS pilot | Verify Ready nodes and metrics, retain the failed port-forward load result, and verify full teardown |
 | [0106](0106-in-cluster-load-proposal.md) | In-cluster EKS load proposal | Prepare a bounded k6 Job without creating AWS resources or claiming full-run success |
 | [0107](0107-local-job-smoke-and-evidence-gate.md) | Local Job smoke and evidence gate | Prove the Job can run in kind and reject partial one-hour evidence without creating AWS resources |
+| [0108](0108-third-eks-pilot-complete.md) | Third EKS pilot and teardown | Complete internal one-hour load, UID-verified analysis, and scoped AWS teardown without claiming bill savings |
 
 ## Visual language
 
