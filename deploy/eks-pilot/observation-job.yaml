@@ -1,4 +1,5 @@
-# Proposed for a future separately approved disposable EKS pilot. Not deployed.
+# Reusable disposable EKS pilot Job; not currently deployed.
+# It completed the 2026-09-21 approved pilot; any new run needs separate approval.
 # Create kubefit-observation-profile from benchmarks/k6/observation_profile.js
 # in kubefit-demo before applying this Job; see monitoring-runbook.md.
 apiVersion: batch/v1

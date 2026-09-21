@@ -2,8 +2,9 @@
 
 This directory is a **reviewable infrastructure draft**, not an instruction to
 launch a cluster. `enable_experiment` defaults to `false`; a default plan creates
-**zero resources**. Two approved, temporary EKS probes were run and fully
-torn down on 2026-09-20; there is no active pilot cluster.
+**zero resources**. Two temporary probes on 2026-09-20 and a third on
+2026-09-21 were separately approved and fully torn down; there is no active
+pilot cluster.
 
 The planned topology is one EKS 1.34 cluster in Seoul, two private-subnet
 `m6i.large` managed nodes in two AZs, one NAT gateway with one public IPv4,
@@ -54,7 +55,14 @@ two workers became `Ready`, Prometheus targets and current-Pod metrics were
 observed, but the one-hour load profile failed when both local port-forwards
 lost their EKS API stream. Readiness stayed insufficient and no EKS
 recommendation or savings result was produced. The second cluster was also
-fully torn down. Neither probe is permission to recreate it.
+fully torn down. The [third probe](../../docs/devlog/0108-third-eks-pilot-complete.md)
+used an in-cluster k6 Job to complete the fixed one-hour profile. Its evidence
+verifier passed, UID-verified readiness became eligible with 122 samples and
+100% coverage, and read-only analysis produced an illustrative recommendation.
+No recommendation was applied, no before/after performance test was run, and
+no AWS bill reduction was demonstrated. All 50 Terraform-managed resources
+were destroyed and an AWS inventory check found no experiment resources.
+None of these probes is permission to recreate the cluster.
 An enabled binary plan can be inspected with the
 [create-plan auditor](../../safety/eks_pilot_plan_audit.py), but its PASS is only
 a structural check; every resource and current price still need human review.
@@ -98,12 +106,12 @@ existing local Prometheus values use the kind `standard` StorageClass and are
 restart, so a restarted observation window must start over. The
 [monitoring runbook](monitoring-runbook.md) and [EKS-only values](prometheus-values.yaml)
 provide a reviewable observation path after separate approval. The monitoring
-installation and short UID-verified collection path have been exercised; an
-uninterrupted one-hour result has not.
-The [proposed in-cluster k6 Job](observation-job.yaml) avoids a long-lived
-local traffic port-forward. It passed a 15-second
+installation and one-hour UID-verified collection path have been exercised in
+the third disposable pilot. The [in-cluster k6 Job](observation-job.yaml)
+avoids a long-lived local traffic port-forward. It passed a 15-second
 [isolated kind smoke](../../docs/devlog/0107-local-job-smoke-and-evidence-gate.md)
-with an explicitly different ConfigMap script, and a
-[fail-closed verifier](../../safety/eks_observation_job.py) is available for
-future Job/Pod/ConfigMap/log evidence. Neither proves a full one-hour EKS run. A new
+with an explicitly different ConfigMap script, then completed the fixed
+one-hour EKS profile. The [fail-closed verifier](../../safety/eks_observation_job.py)
+passed on saved Job/Pod/ConfigMap/log evidence. This proves a controlled
+synthetic observation, not production safety or invoice savings. A new
 capacity/cost review and explicit approval remain necessary before EKS use.

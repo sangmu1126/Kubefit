@@ -99,6 +99,9 @@ the [read-only EKS pilot](../../docs/eks-pilot.md). Follow the
 install the EKS-only Prometheus values and synthetic Deployment, confirm
 kubelet/cAdvisor and kube-state-metrics targets, run UID-verified readiness,
 and generate the one-hour controlled traffic **only if cleanup still fits**.
+The in-cluster Job path in that runbook completed the 2026-09-21 pilot; the
+local traffic port-forward path failed in the earlier probe and is retained
+only as historical troubleshooting context.
 Do not turn this into a production savings claim. Record start/stop times and
 non-secret evidence privately.
 
@@ -158,7 +161,8 @@ all pilot modules from desired state, so an expired creation deadline must not
 be used as a reason to skip cleanup. The destroy plan is not audited by the
 create-plan tool; review all its addresses and actions manually.
 The expired-gate path was rehearsed only with a local `terraform_data` resource;
-real EKS/VPC teardown is still unproven until this pilot is actually removed.
+real EKS/VPC teardown was verified in the 2026-09-20 and 2026-09-21 pilots,
+but each future run still needs its own scoped inventory check.
 
 ```sh
 terraform -chdir=deploy/eks-pilot plan \

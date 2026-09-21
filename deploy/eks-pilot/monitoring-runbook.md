@@ -1,8 +1,11 @@
 # Disposable EKS observation runbook
 
-**Partially exercised; full load profile failed.** The [second EKS probe](../../docs/devlog/0105-second-eks-pilot.md)
-confirmed Pod metrics and UID-verified partial readiness, but both local
-port-forwards lost their EKS API stream before the one-hour load finished.
+**Exercised with a completed synthetic one-hour profile.** The
+[second EKS probe](../../docs/devlog/0105-second-eks-pilot.md) confirmed Pod
+metrics but lost its local traffic port-forwards before the profile finished.
+The [third probe](../../docs/devlog/0108-third-eks-pilot-complete.md) completed
+the fixed in-cluster Job and UID-verified readiness. Neither is production
+traffic or a measured cloud-bill saving.
 Follow this only after the [EKS GO/NO-GO gate](../../docs/eks-validation-plan.md)
 and a separately approved infrastructure plan. It applies only to the new,
 experiment-owned cluster; it must not install into an existing production
@@ -12,6 +15,7 @@ cluster. KubeFit itself stays outside EKS and only reads the selected workload.
 approved EKS cluster
   ├─ kube-prometheus-stack: kubelet/cAdvisor + kube-state-metrics
   ├─ kubefit-demo/overprovisioned-api: two synthetic Pods
+  ├─ kubefit-demo/kubefit-observation: internal 60-minute load Job
   └─ local KubeFit CLI: UID check → readiness → analysis
 ```
 
@@ -58,7 +62,7 @@ is a stop condition, not a reason to overwrite someone else's resources.
 aws sts get-caller-identity
 kubectl --context kubefit-eks-pilot cluster-info
 kubectl --context kubefit-eks-pilot get nodes -o wide
-helm --kube-context kubefit-eks-pilot list --namespace monitoring --all
+helm --kube-context kubefit-eks-pilot list --namespace monitoring
 kubectl --context kubefit-eks-pilot get namespace kubefit-demo
 ```
 
@@ -70,8 +74,8 @@ of 2 vCPU and 4 GiB before monitoring and EKS system Pods are added; two
 
 ## 3. Install only after explicit approval
 
-These commands **write to EKS and incur charges**; they are not part of the
-current local validation. Keep the fixed context in every command.
+These commands **write to EKS and incur charges**; they are not part of a
+read-only validation. Keep the fixed context in every command.
 
 ```sh
 helm --kube-context kubefit-eks-pilot upgrade --install monitoring \
@@ -114,10 +118,10 @@ kube_pod_owner{namespace="kubefit-demo",pod=~"overprovisioned-api-.*"}
 Then run the [read-only UID-verified readiness command](../../docs/eks-pilot.md)
 against `http://127.0.0.1:19090`. An initially `collecting` result is normal:
 the `demo` profile needs a full controlled one-hour window and enough samples.
-Use `--observation-profile demo` **only** for this synthetic workload. If the
-deadline leaves enough time for observation **and cleanup**, port-forward the
-demo Service in another terminal and run the fixed-load profile from the local
-machine, recording its start time:
+Use `--observation-profile demo` **only** for this synthetic workload. The
+following local traffic tunnel is retained to explain the failed second
+probe; use the in-cluster Job below for an approved repeat. Do not treat the
+two load paths as interchangeable evidence.
 
 ```sh
 kubectl --context kubefit-eks-pilot -n kubefit-demo port-forward \
@@ -142,27 +146,26 @@ invalidate the observation window;
 do not interpret an empty/idle graph as a valid recommendation. The production
 seven-day profile is not feasible in this short disposable pilot.
 
-### Proposed next attempt: in-cluster k6 Job (not deployed)
+### Validated in-cluster k6 Job (not currently deployed)
 
 The [second probe](../../docs/devlog/0105-second-eks-pilot.md) lost both local
 API port-forwards after about 35 minutes even though the nodes and Pods stayed
-up. The [proposed Job](observation-job.yaml) runs the **same committed 60-minute
+up. The [Job](observation-job.yaml) runs the **same committed 60-minute
 script** inside `kubefit-demo`, sending traffic to the internal Service without
 keeping a local port-forward alive. A local API disconnect can interrupt status
-or log retrieval but should not itself terminate a running Job. This is a new
-test topology, not a successful validation or a drop-in comparison with the
-failed local run. The unchanged Job completed a **15-second local kind smoke
-test**, but has not run on EKS or completed the one-hour profile.
+or log retrieval but should not itself terminate a running Job. The unchanged
+Job completed a **15-second local kind smoke test** and the separately approved
+2026-09-21 EKS one-hour profile. The latter is not a drop-in comparison with
+the failed local run, nor a production-user latency benchmark.
 
 Before another separately approved, chargeable attempt, verify that two
 `m6i.large` nodes can also schedule this Job's 250m/256Mi request alongside
 the demo and monitoring Pods. The Job can consume up to 1 CPU and 1 GiB, so
 co-location may affect the measured workload. Account for its image pull and
 node pressure; do not add nodes or alter the fixed k6 rates ad hoc. Its pinned
-image started as a non-root user and loaded the fixed script in local Docker,
-but this Job has **not** run on EKS. A `Pending`, `ImagePullBackOff`, failed Job,
-nonzero k6 exit, dropped
-iteration, or excessive request error invalidates the profile.
+image started as a non-root user and loaded the fixed script on EKS. A
+`Pending`, `ImagePullBackOff`, failed Job, nonzero k6 exit, dropped iteration,
+or excessive request error invalidates the profile.
 
 Only on the new approved cluster, after confirming neither object exists and
 recording the script checksum, create the ConfigMap **from the source file**
