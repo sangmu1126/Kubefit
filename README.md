@@ -176,6 +176,11 @@ These scripts use local Docker and do not create AWS resources.
 
 KubeFit can validate supported image, replica, and resource changes independently of
 the recommendation pipeline.
+For resource changes, this workflow also requires current-Pod UID-bound Prometheus
+CPU throttling evidence. When other checks pass, missing metrics or a candidate
+above 5% P95 throttled periods or 1 percentage point above the base produce
+`review_required`, not a safety PASS. A performance-only PASS created before
+this gate is not retroactive throttling evidence.
 
 ### 1. Freeze exact input
 
@@ -239,6 +244,13 @@ kubefit benchmark-change-pair \
 
 Both independent orders and their non-order policy checks must pass. The Pair reduces
 directional time bias but does not establish statistical significance.
+Keep a Prometheus port-forward at `http://127.0.0.1:9090` while benchmarking
+resource changes, or pass its local URL with `--prometheus-url`. A
+`review_required` result is persisted for inspection, returns exit code 2,
+and cannot satisfy downstream PASS-only gates. Cost, OOM, and fault injection
+remain separate checks.
+Legacy resource-change Pairs without throttling evidence are also rejected
+as PodKill prerequisites, despite retaining their historical performance PASS.
 
 ## Controlled PodKill workflow
 

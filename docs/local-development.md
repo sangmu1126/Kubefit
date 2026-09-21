@@ -526,6 +526,15 @@ The target URL must remain reachable from the host-side k6 process throughout bo
 benchmarks. It restores base, atomically writes exact summary/raw evidence plus policy
 and verdict, reloads the artifact, then prints only its identity and status. FAIL or
 INVALID evidence remains on disk and produces exit code 2.
+For a resource change, keep Prometheus reachable at the default
+`http://localhost:9090` or supply `--prometheus-url`. The runner snapshots
+current Pod UIDs before and after each load, verifies the Prometheus identity
+source, and queries CPU throttling P95 over the aligned load window. Missing
+or incomplete Pod coverage, Pod replacement, more than 5% candidate P95, or
+more than a 1 percentage-point P95 increase yields persisted
+`review_required` (exit code 2) when latency and errors pass; other failures
+still produce `fail`. Legacy performance-only artifacts remain readable but do
+not gain retrospective throttling evidence.
 
 Collect the opposite order as a separate restored artifact:
 
@@ -557,6 +566,9 @@ embedded performance artifacts and replays the assessment. A single failed trial
 disagreement between policy check statuses fails the Pair rather than averaging metrics.
 FAIL is persisted for diagnosis and exits 2. Duplicate, same-order, cross-change,
 cross-target, cross-profile, or cross-policy inputs are INVALID and are not published.
+If either resource-change trial needs throttling review, the Pair also becomes
+`review_required` and cannot satisfy PASS-only downstream gates. This does not
+measure AWS invoice savings or prove OOM/fault safety.
 
 ### Inspect the PodKill safety boundary
 
